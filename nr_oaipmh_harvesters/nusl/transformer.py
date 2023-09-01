@@ -453,6 +453,8 @@ def parse_isbn(value, identifiers):
             vv = vv[5:].strip()
         if vv.lower().startswith("isbn"):
             vv = vv[4:].strip()
+        if vv.startswith("(") and vv.endswith(")"):
+            vv = vv[1:-1]
         if not vv or vv == "N":
             continue
         identifiers.append({"identifier": vv, "scheme": "ISBN"})
