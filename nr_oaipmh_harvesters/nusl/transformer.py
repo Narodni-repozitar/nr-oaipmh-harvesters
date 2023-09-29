@@ -363,9 +363,21 @@ def transform_7112_event(md, entry, value):
 
 def parse_place(place):
     res = {}
+    
+    if re.search(r'\(\-\)', place):
+        # no country code, therefore no place
+        return res
+    
     place_array = place.strip().rsplit("(", 1)
-    country = place_array[-1].replace(")", "").strip().upper()
-    country = re.sub(r"\W", "", country)
+    
+    # matches multiple countries (2+) e.g. (CZ, SK, PL)
+    multiple_countries_match = re.search(r'\(([a-zA-Z][a-zA-Z]+)(,\s*[a-zA-Z][a-zA-Z]+)+\)', place)
+    if multiple_countries_match:
+        country = multiple_countries_match.group(1).strip().upper()
+    else:
+        country = place_array[-1].replace(")", "").strip().upper()
+        country = re.sub(r"\W", "", country)
+    
     place = place_array[0].strip()
     if place:
         countries = vocabulary_cache.by_id("countries", "id")
