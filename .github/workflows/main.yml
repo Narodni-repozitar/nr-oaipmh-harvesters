@@ -42,9 +42,9 @@ jobs:
           python -m pip install --upgrade pip wheel setuptools
           pip install -e .
 
-      # - name: Test with pytest
-      #   run: |
-      #     pytest tests
+      - name: Test with pytest
+        run: |
+           echo "::warning ::Implement tests"
 
       - name: Build package to publish
         run: |

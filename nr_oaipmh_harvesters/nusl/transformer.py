@@ -8,7 +8,7 @@ from oarepo_oaipmh_harvester.transformers.rule import (
     make_dict,
     make_array,
 )
-from oarepo_runtime.datastreams import StreamEntry
+from oarepo_runtime.datastreams.types import StreamEntry
 import pycountry
 
 from invenio_cache.proxies import current_cache
