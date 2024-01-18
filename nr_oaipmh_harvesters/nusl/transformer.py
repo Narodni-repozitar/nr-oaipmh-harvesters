@@ -191,7 +191,9 @@ def transform_046_date_modified(md, entry, value):
 
 @matches("046__k")
 def transform_046_date_issued(md, entry, value):
-    md["dateAvailable"] = convert_to_date(value)
+    date_issued = convert_to_date(value)
+    md["dateAvailable"] = date_issued
+    md["dateIssued"] = date_issued
 
 
 @matches("24500a")
@@ -1052,7 +1054,10 @@ def transform_998_collection(md, entry, value):
 
 @matches("502__a")
 def transform_502_date_defended(md, entry, value):
-    md.setdefault("thesis", {})["dateDefended"] = convert_to_date(value)
+    date_defended = convert_to_date(value)
+    md.setdefault("thesis", {})["dateDefended"] = date_defended
+    if not md["dateIssued"]:
+        md["dateIssued"] = date_defended
 
 
 class VocabularyCache:
