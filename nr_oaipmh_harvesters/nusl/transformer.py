@@ -1056,7 +1056,9 @@ def transform_998_collection(md, entry, value):
 def transform_502_date_defended(md, entry, value):
     date_defended = convert_to_date(value)
     md.setdefault("thesis", {})["dateDefended"] = date_defended
-    if not md["dateIssued"]:
+
+    date_issued = md.setdefault("dateIssued", "")
+    if not date_issued:
         md["dateIssued"] = date_defended
 
 
