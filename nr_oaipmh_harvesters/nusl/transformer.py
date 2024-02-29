@@ -84,7 +84,8 @@ class NUSLTransformer(OAIRuleTransformer):
         transform_586_defended(md, entry)  # obhajeno == true
         transform_656_study_field(md, entry)
 
-        transform_998_collection(md, entry)
+        # TODO: convert this to a community and add support for communities in general
+        # transform_998_collection(md, entry)
 
         deduplicate(md, "languages")
         deduplicate(md, "contributors")
@@ -192,7 +193,6 @@ def transform_046_date_modified(md, entry, value):
 @matches("046__k")
 def transform_046_date_issued(md, entry, value):
     date_issued = convert_to_date(value)
-    md["dateAvailable"] = date_issued
     md["dateIssued"] = date_issued
 
 
