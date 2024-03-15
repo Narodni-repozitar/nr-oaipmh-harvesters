@@ -389,12 +389,11 @@ def parse_place(place):
         res["country"] = {"id": country}
     return res
 
-
 @matches("720__a", unique=True)
 def transform_720_creator(md, entry, value):
     if value:
         md.setdefault("creators", []).append(
-            {"fullName": value, "nameType": "Personal"}
+            {"fullName": value, "nameType": resolve_name_type(value)}
         )
 
 
@@ -411,7 +410,7 @@ def transform_720_contributor(md, entry, value):
                 value[0],
                 # type of the contributor - only person supported by now
                 "nameType",
-                "Personal",
+                resolve_name_type(value),
                 # role of the contributor
                 "role",
                 role,
@@ -1260,3 +1259,98 @@ def convert_to_date(value):
 
 
 vocabulary_cache = VocabularyCache()
+
+def resolve_name_type(value):
+    """
+    Based on the given value of creator or contributor, applies heuristic rules
+    to determine the `nameType`. When none of the rules applied, default is `Personal`.
+    
+    Returns either `Organizational` or `Personal`. 
+    """
+    inst = vocabulary_cache.get_institution(value)
+    if inst:
+        return "Organizational"
+    
+    titles = []
+    for title_candidate in ACADEMIC_TITLES:
+        titles.extend(add_word_borders_and_lowercase(title_candidate))
+    if any(title in value for title in titles):
+        return "Personal"
+    
+    organizational_hypernyms = []
+    for candidate in ORGANIZATIONAL_HYPERNYMS:
+        organizational_hypernyms.extend(add_word_borders_and_lowercase(candidate))
+    if any(org_hypernym in value for org_hypernym in organizational_hypernyms):
+        return "Organizational"
+    
+    companies_endings = []
+    for candidate in COMPANIES_ENDINGS:
+        companies_endings.extend(add_word_borders_and_lowercase(companies_endings))
+    if any(company_ending in value for company_ending in companies_endings):
+        return "Organizational"
+    
+    return "Personal"
+    
+ACADEMIC_TITLES = [
+    'Bc.', 'BcA.', 'CSc.', 'DiS.', 'Dr.', 'DrSc.', 'ICDr.', 'Ing.', 'Ing. arch.', 'JUDr.',
+    'MDDr.', 'MgA.', 'Mgr.', 'MSDr.', 'MUDr.', 'MVDr.', 'PaedDr.', 'Ph.D.', 'PharmDr.', 
+    'PhDr.', 'PhMr.', 'RCDr.', 'RTDr.', 'RNDr.', 'RSDr.', 'ThDr.', 'Th.D.', 'ThLic.',
+    'dr. h. c.', 'Prof.', 'Doc.',
+    'MBA', 'DBA', 'LL.M.',
+]
+
+COMPANIES_ENDINGS = [
+    's.r.o.', 's. r. o.', 'a.s.', 'a. s.', 'spol.', 'o.p.s.', 'o. p. s.'
+]
+
+ORGANIZATIONAL_HYPERNYMS = [
+    'Univerzita',
+    'Univerzity',
+    'Universita',
+    'Fakulta',
+    'Fakulty',
+    'Fakultní',
+    'Katedra',
+    'Katedry',
+    'Centrum',
+    'Ústav',
+    'Správa',
+    'Správy',
+    'Institut',
+    'Oddělení',
+    'Odděleni',
+    'Agentura',
+    'Agentury',
+    'Akademie',
+    'Ministerstva',
+    'Ministerstvo',
+    'Odbor',
+    'Úřad',
+    'Odd.',
+    'Asociace',
+    'Stanice',
+    'Činnost',
+    'Společnost',
+    'Středisko',
+    'Česká',
+    'Český',
+    'Škola',
+    'Kolektiv',
+    'Sdružení',
+    'Národní',
+    '(firma)',
+    'Muzeum',
+]
+
+def add_word_borders_and_lowercase(word):
+    """
+    Incorporates word bounds for a given word in the text and takes into account where the word can be in the sentence.
+    Also adds lowercase variant.
+    """
+    word_at_beginning = word + " "
+    word_in_the_middle = " " + word + " "
+    word_in_the_middle_lower = " " + word.lower() + " "
+    word_at_the_end = " " + word
+    word_at_the_end_lower = " " + word.lower()
+    
+    return [word_at_beginning, word_at_beginning.lower(), word_in_the_middle, word_in_the_middle_lower, word_at_the_end, word_at_the_end_lower]
