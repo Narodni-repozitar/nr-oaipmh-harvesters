@@ -1272,8 +1272,8 @@ def resolve_name_type(value):
         return "Organizational"
     
     titles = []
-    for title_candidate in ACADEMIC_TITLES:
-        titles.extend(add_word_borders_and_lowercase(title_candidate))
+    for candidate in ACADEMIC_TITLES:
+        titles.extend(add_word_borders_and_lowercase(candidate))
     if any(title in value for title in titles):
         return "Personal"
     
@@ -1285,7 +1285,7 @@ def resolve_name_type(value):
     
     companies_endings = []
     for candidate in COMPANIES_ENDINGS:
-        companies_endings.extend(add_word_borders_and_lowercase(companies_endings))
+        companies_endings.extend(add_word_borders_and_lowercase(candidate))
     if any(company_ending in value for company_ending in companies_endings):
         return "Organizational"
     
