@@ -402,7 +402,7 @@ def transform_720_contributor(md, entry, value):
     if value[0]:
         role = value[1]
         if role:
-            role = vocabulary_cache.by_id("contributor-roles")[role]
+            role = vocabulary_cache.by_id("contributor-types")[role]
         md.setdefault("contributors", []).append(
             make_dict(
                 # full name
@@ -979,10 +979,10 @@ rights_dict = {
 
 
 def parse_rights(text):
-    license = rights_dict.get(text)
-    if not license:
+    right = rights_dict.get(text)
+    if not right:
         return None
-    return vocabulary_cache.by_id("licenses", "id")[license]
+    return vocabulary_cache.by_id("rights", "id")[right]
 
 
 def transform_oai_identifier(md, entry):
