@@ -410,7 +410,7 @@ def transform_720_contributor(md, entry, value):
                 value[0],
                 # type of the contributor - only person supported by now
                 "nameType",
-                resolve_name_type(value),
+                resolve_name_type(value[0]),
                 # role of the contributor
                 "role",
                 role,
