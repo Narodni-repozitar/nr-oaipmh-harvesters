@@ -412,7 +412,7 @@ def transform_720_contributor(md, entry, value):
                 "nameType",
                 resolve_name_type(value[0]),
                 # role of the contributor
-                "role",
+                "contributorType",
                 role,
             )
         )
