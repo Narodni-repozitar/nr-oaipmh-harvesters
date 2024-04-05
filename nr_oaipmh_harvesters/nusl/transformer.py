@@ -203,17 +203,23 @@ def transform_245_title(md, entry, value):
 
 @matches("24500b")
 def transform_245_translated_title(md, entry, value):
+    if value is None:
+        return
+    
     md.setdefault("additionalTitles", []).append(
         {"title": {"lang": "en", "value": value}, "titleType": "translatedTitle"}
     )
 
 
 @matches("24630n", "24630p")
-def transform_246_title_alternate(md, entry, val):
+def transform_246_title_alternate(md, entry, val):    
     _transform_title(md, entry, "alternativeTitle", val)
 
 
 def _transform_title(md, entry, titleType, val):
+    if val is None:
+        return
+    
     try:
         lang = get_alpha2_lang(entry.entry.get("04107a"))
         md.setdefault("additionalTitles", []).append(
@@ -236,6 +242,9 @@ def transform_24633a_subtitle(md, entry, val):
 
 @matches("24633b")
 def transform_24633b_subtitle(md, entry, val):
+    if val is None:
+        return
+    
     md.setdefault("additionalTitles", []).append(
         {"title": {"lang": "en", "value": val}, "titleType": "subtitle"}
     )
