@@ -957,7 +957,7 @@ def transform_540_rights(md, entry, value):
     rights = value[0]
     rights = parse_rights(value[0])
     if rights:
-        md.setdefault("rights", []).append(rights)
+        md.setdefault("rights", {}).update(rights)
 
 
 rights_dict = {
