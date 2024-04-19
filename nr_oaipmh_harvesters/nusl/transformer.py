@@ -198,6 +198,10 @@ def transform_046_date_issued(md, entry, value):
 
 @matches("24500a")
 def transform_245_title(md, entry, value):
+    if isinstance(value, list):
+        value = list(filter(lambda x: x is not None, value))
+        value = None if not value else value[0]
+        
     md["title"] = value
 
 
@@ -206,9 +210,19 @@ def transform_245_translated_title(md, entry, value):
     if value is None:
         return
     
+    if isinstance(value, list):
+        value = list(filter(lambda x: x is not None, value))
+        if not value:
+            return
+        
+        value = value[0]
+    
     md.setdefault("additionalTitles", []).append(
         {"title": {"lang": "en", "value": value}, "titleType": "translatedTitle"}
     )
+    
+    if "title" not in md or md["title"] is None:
+        md["title"] = value
 
 
 @matches("24630n", "24630p")
