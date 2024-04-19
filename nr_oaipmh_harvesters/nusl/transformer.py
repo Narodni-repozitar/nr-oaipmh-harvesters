@@ -304,6 +304,9 @@ def transform_520_abstract(md, entry, value):
 
 @matches("598__a")
 def transform_598_note(md, entry, value):
+    if value is None:
+        return 
+
     md.setdefault("notes", []).append(value)
 
 
