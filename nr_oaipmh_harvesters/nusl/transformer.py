@@ -192,6 +192,9 @@ def transform_046_date_modified(md, entry, value):
 
 @matches("046__k")
 def transform_046_date_issued(md, entry, value):
+    if value.startswith("c"):
+        value = value[1:]
+    
     date_issued = convert_to_date(value)
     md["dateIssued"] = date_issued
 
