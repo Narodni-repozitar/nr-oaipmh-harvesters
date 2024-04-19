@@ -187,11 +187,19 @@ def transform_035_original_record_oai(md, entry, value):
 
 @matches("046__j")
 def transform_046_date_modified(md, entry, value):
+    if isinstance(value, list):
+        value = list(filter(lambda x: x is not None, value))
+        value = value = None if not value else value[0]
+    
     md["dateModified"] = convert_to_date(value)
 
 
 @matches("046__k")
 def transform_046_date_issued(md, entry, value):
+    if isinstance(value, list):
+        value = list(filter(lambda x: x is not None, value))
+        value = value = None if not value else value[0]
+    
     if value.startswith("c"):
         value = value[1:]
     
