@@ -187,17 +187,32 @@ def transform_035_original_record_oai(md, entry, value):
 
 @matches("046__j")
 def transform_046_date_modified(md, entry, value):
+    if isinstance(value, list):
+        value = list(filter(lambda x: x is not None, value))
+        value = value = None if not value else value[0]
+    
     md["dateModified"] = convert_to_date(value)
 
 
 @matches("046__k")
 def transform_046_date_issued(md, entry, value):
+    if isinstance(value, list):
+        value = list(filter(lambda x: x is not None, value))
+        value = value = None if not value else value[0]
+    
+    if value.startswith("c"):
+        value = value[1:]
+    
     date_issued = convert_to_date(value)
     md["dateIssued"] = date_issued
 
 
 @matches("24500a")
 def transform_245_title(md, entry, value):
+    if isinstance(value, list):
+        value = list(filter(lambda x: x is not None, value))
+        value = None if not value else value[0]
+        
     md["title"] = value
 
 
@@ -206,9 +221,19 @@ def transform_245_translated_title(md, entry, value):
     if value is None:
         return
     
+    if isinstance(value, list):
+        value = list(filter(lambda x: x is not None, value))
+        if not value:
+            return
+        
+        value = value[0]
+    
     md.setdefault("additionalTitles", []).append(
         {"title": {"lang": "en", "value": value}, "titleType": "translatedTitle"}
     )
+    
+    if "title" not in md or md["title"] is None:
+        md["title"] = value
 
 
 @matches("24630n", "24630p")
@@ -279,6 +304,9 @@ def transform_520_abstract(md, entry, value):
 
 @matches("598__a")
 def transform_598_note(md, entry, value):
+    if value is None:
+        return 
+
     md.setdefault("notes", []).append(value)
 
 
@@ -298,6 +326,9 @@ def transform_650_7_subject(md, entry, value):
 
 
 def transform_subject(md, value):
+    if any(v is None for v in value):
+        return
+    
     purl = value[3] or ""
     val_url = (
         purl if purl.startswith("http://") or purl.startswith("https://") else None
