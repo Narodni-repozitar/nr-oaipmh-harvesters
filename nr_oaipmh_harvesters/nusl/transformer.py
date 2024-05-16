@@ -198,7 +198,7 @@ def transform_046_date_modified(md, entry, value):
 def transform_046_date_issued(md, entry, value):
     if isinstance(value, list):
         value = list(filter(lambda x: x is not None, value))
-        value = value = None if not value else value[0]
+        value = None if not value else value[0]
     
     if value.startswith("c"):
         value = value[1:]
@@ -246,7 +246,12 @@ def _transform_title(md, entry, titleType, val):
         return
     
     try:
-        lang = get_alpha2_lang(entry.entry.get("04107a"))
+        lang_entry = entry.entry.get("04107a")
+        if isinstance(lang_entry, list):
+            lang_entry = list(filter(lambda x: x is not None, lang_entry))
+            lang_entry = None if not lang_entry else lang_entry[0]
+
+        lang = get_alpha2_lang(lang_entry)
         md.setdefault("additionalTitles", []).append(
             {"title": {"lang": lang, "value": val}, "titleType": titleType}
         )
@@ -254,7 +259,7 @@ def _transform_title(md, entry, titleType, val):
         # append it with the original language, marshmallow will take care of that
         md.setdefault("additionalTitles", []).append(
             {
-                "title": {"lang": entry.entry.get("04107a"), "value": val},
+                "title": {"lang": lang_entry, "value": val},
                 "titleType": titleType,
             }
         )
