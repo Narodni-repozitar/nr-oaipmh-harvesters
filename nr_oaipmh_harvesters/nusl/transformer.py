@@ -440,6 +440,10 @@ def transform_720_creator(md, entry, value):
 @matches("720__i", "720__e", paired=True, unique=True)
 def transform_720_contributor(md, entry, value):
     if value[0]:
+        name_type = resolve_name_type(value[0])
+        if not name_type:
+            return
+        
         role = value[1]
         if role:
             role = vocabulary_cache.by_id("contributor-types")[role]
@@ -450,7 +454,7 @@ def transform_720_contributor(md, entry, value):
                 value[0],
                 # type of the contributor - only person supported by now
                 "nameType",
-                resolve_name_type(value[0]),
+                name_type,
                 # role of the contributor
                 "contributorType",
                 role,
@@ -1307,7 +1311,11 @@ def resolve_name_type(value):
     
     Returns either `Organizational` or `Personal`. 
     """
-    inst = vocabulary_cache.get_institution(value)
+    try:
+        inst = vocabulary_cache.get_institution(value)
+    except KeyError:
+        return None
+    
     if inst:
         return "Organizational"
     
