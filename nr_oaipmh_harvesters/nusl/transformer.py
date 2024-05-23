@@ -200,6 +200,9 @@ def transform_046_date_issued(md, entry, value):
         value = list(filter(lambda x: x is not None, value))
         value = None if not value else value[0]
     
+    if value is None:
+        return
+    
     if value.startswith("c"):
         value = value[1:]
     
