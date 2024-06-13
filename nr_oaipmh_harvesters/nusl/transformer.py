@@ -1,3 +1,4 @@
+from datetime import datetime
 import itertools
 import re
 from oarepo_oaipmh_harvester.transformers.rule import (
@@ -205,6 +206,23 @@ def transform_046_date_issued(md, entry, value):
     
     if value.startswith("c"):
         value = value[1:]
+    
+    if len(value) == 8 and all(c.isdigit() for c in value):
+        # iso 8601 date formats, e. g., YYYY-MM-DD or DD-MM-YYYY
+        def is_valid_date(date_str, date_format):
+            try:
+                datetime.strptime(date_str, date_format)
+                return True
+            except ValueError:
+                return False
+            
+        if is_valid_date(value, "%Y%m%d"):
+            md["dateIssued"] = value[:4]
+            return
+        
+        if is_valid_date(value, "%d%m%Y") or is_valid_date(value, "%m%d%Y"):
+            md["dateIssued"] = value[-4:]
+            return
     
     date_issued = convert_to_date(value)
     md["dateIssued"] = date_issued
