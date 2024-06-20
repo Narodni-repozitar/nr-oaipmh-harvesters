@@ -544,6 +544,11 @@ def parse_isbn(value, identifiers):
 
 
 def parse_item_issue(text: str):
+    if re.match(r'^\d+$|^\d+-\d+$', text):
+        return {
+            "itemIssue": text
+        }
+
     dict_ = {
         "Roč. 22, č. 2 (2011)": {
             "itemVolume": "22",
