@@ -549,17 +549,31 @@ def parse_isbn(value, identifiers):
 
 
 def parse_item_issue(text: str):
-    if re.match(r'^\d+$|^\d+-\d+$', text):
+    if re.match(r'^\d+$|^\d+[-–]\d+$', text):
+        # Item issues in the format issue/issueStart-issueEnd
         return {
             "itemIssue": text
         }
 
+    if re.match(r'^\d+/\d+$', text):
+        # Item issues with year in the format issue/year
+        issue, year = text.split('/')
+        return {
+            "itemIssue": issue,
+            "itemYear": year
+        }
+
+    number_match = re.match(r'^No\.\s+(\d+),\s+(\d+)$', text)
+    if number_match:
+        # Item issues with year in the format "No. issue, year"
+        issue, year = number_match.groups()
+        return { 
+            "itemIssue": issue,
+            "itemYear": year
+        }
+
     dict_ = {
-        "Roč. 22, č. 2 (2011)": {
-            "itemVolume": "22",
-            "itemIssue": "2",
-            "itemYear": "2011",
-        },
+        "Roč. 22, č. 2 (2011)": { "itemVolume": "22", "itemIssue": "2", "itemYear": "2011" },
         "2008": {"itemYear": "2008"},
         "Roč. 19 (2013)": {"itemVolume": "19", "itemYear": "2013"},
         "Roč. 2016": {"itemYear": "2016"},
@@ -569,6 +583,13 @@ def parse_item_issue(text: str):
             "itemStartPage": "76",
             "itemEndPage": "86",
         },
+        "roč. 7 (2021), 23": { "itemVolume": "7", "itemYear": "2021", "itemIssue": "23" },
+        "ročník XXXII , č. 6 (2022)": { "itemVolume": "32", "itemIssue": "6", "itemYear": "2022" },
+        "Únor 2022": { "itemIssue": "2", "itemYear": "2022" },
+        "ročník 72, číslo 7–8/2022": { "itemVolume": "72", "itemIssue": "7–8", "itemYear": "2022" },
+        "Vol. 19, Nos. 1/2/3": { "itemVolume": "19", "itemIssue": "1-3"},
+        "Ročník 22, číslo 4": { "itemVolume": "22", "itemIssue": "4" },
+        "č. 3/2018": { "itemIssue": "3", "itemYear": "2018" }
     }
     return dict_.get(text)
 
