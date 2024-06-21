@@ -432,6 +432,11 @@ def transform_7112_event(md, entry, value):
 def parse_place(place):
     res = {}
     
+    if place.lower() == "online":
+        return {
+            "place": place
+        }
+
     if re.search(r'\(\-\)', place):
         # no country code, therefore no place
         return res
@@ -445,7 +450,7 @@ def parse_place(place):
     else:
         country = place_array[-1].replace(")", "").strip().upper()
         country = re.sub(r"\W", "", country)
-    
+
     place = place_array[0].strip()
     if place:
         countries = vocabulary_cache.by_id("countries", "id")
@@ -470,9 +475,14 @@ def transform_720_contributor(md, entry, value):
         if not name_type:
             return
         
+        contributor_types = vocabulary_cache.by_id("contributor-types", "id", "title")
+        role_from_vocab = { "id": contributor_types["other"]["id"] }
         role = value[1]
         if role:
-            role = vocabulary_cache.by_id("contributor-types")[role]
+            for contributor_type in contributor_types.values():
+                if role == contributor_type["title"]["cs"] or role == contributor_type["title"]["en"]:
+                    role_from_vocab["id"] = contributor_types[contributor_type["title"]["en"]]["id"]
+        
         md.setdefault("contributors", []).append(
             make_dict(
                 # full name
@@ -483,7 +493,7 @@ def transform_720_contributor(md, entry, value):
                 name_type,
                 # role of the contributor
                 "contributorType",
-                role,
+                role_from_vocab,
             )
         )
 
@@ -544,17 +554,31 @@ def parse_isbn(value, identifiers):
 
 
 def parse_item_issue(text: str):
-    if re.match(r'^\d+$|^\d+-\d+$', text):
+    if re.match(r'^\d+$|^\d+[-–]\d+$', text):
+        # Item issues in the format issue/issueStart-issueEnd
         return {
             "itemIssue": text
         }
 
+    if re.match(r'^\d+/\d+$', text):
+        # Item issues with year in the format issue/year
+        issue, year = text.split('/')
+        return {
+            "itemIssue": issue,
+            "itemYear": year
+        }
+
+    number_match = re.match(r'^No\.\s+(\d+),\s+(\d+)$', text)
+    if number_match:
+        # Item issues with year in the format "No. issue, year"
+        issue, year = number_match.groups()
+        return { 
+            "itemIssue": issue,
+            "itemYear": year
+        }
+
     dict_ = {
-        "Roč. 22, č. 2 (2011)": {
-            "itemVolume": "22",
-            "itemIssue": "2",
-            "itemYear": "2011",
-        },
+        "Roč. 22, č. 2 (2011)": { "itemVolume": "22", "itemIssue": "2", "itemYear": "2011" },
         "2008": {"itemYear": "2008"},
         "Roč. 19 (2013)": {"itemVolume": "19", "itemYear": "2013"},
         "Roč. 2016": {"itemYear": "2016"},
@@ -564,6 +588,14 @@ def parse_item_issue(text: str):
             "itemStartPage": "76",
             "itemEndPage": "86",
         },
+        "roč. 7 (2021), 23": { "itemVolume": "7", "itemYear": "2021", "itemIssue": "23" },
+        "ročník XXXII , č. 6 (2022)": { "itemVolume": "32", "itemIssue": "6", "itemYear": "2022" },
+        "Únor 2022": { "itemIssue": "2", "itemYear": "2022" },
+        "ročník 72, číslo 7–8/2022": { "itemVolume": "72", "itemIssue": "7–8", "itemYear": "2022" },
+        "Vol. 19, Nos. 1/2/3": { "itemVolume": "19", "itemIssue": "1-3"},
+        "Ročník 22, číslo 4": { "itemVolume": "22", "itemIssue": "4" },
+        "č. 3/2018": { "itemIssue": "3", "itemYear": "2018" },
+        "Únor": { "itemIssue": "2" }
     }
     return dict_.get(text)
 
