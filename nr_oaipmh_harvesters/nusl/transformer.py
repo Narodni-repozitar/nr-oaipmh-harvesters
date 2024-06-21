@@ -475,9 +475,14 @@ def transform_720_contributor(md, entry, value):
         if not name_type:
             return
         
+        contributor_types = vocabulary_cache.by_id("contributor-types", "id", "title")
+        role_from_vocab = { "id": contributor_types["other"]["id"] }
         role = value[1]
         if role:
-            role = vocabulary_cache.by_id("contributor-types")[role]
+            for contributor_type in contributor_types.values():
+                if role == contributor_type["title"]["cs"] or role == contributor_type["title"]["en"]:
+                    role_from_vocab["id"] = contributor_types[contributor_type["title"]["en"]]["id"]
+        
         md.setdefault("contributors", []).append(
             make_dict(
                 # full name
@@ -488,7 +493,7 @@ def transform_720_contributor(md, entry, value):
                 name_type,
                 # role of the contributor
                 "contributorType",
-                role,
+                role_from_vocab,
             )
         )
 
