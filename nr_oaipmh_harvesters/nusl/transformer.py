@@ -589,7 +589,8 @@ def parse_item_issue(text: str):
         "ročník 72, číslo 7–8/2022": { "itemVolume": "72", "itemIssue": "7–8", "itemYear": "2022" },
         "Vol. 19, Nos. 1/2/3": { "itemVolume": "19", "itemIssue": "1-3"},
         "Ročník 22, číslo 4": { "itemVolume": "22", "itemIssue": "4" },
-        "č. 3/2018": { "itemIssue": "3", "itemYear": "2018" }
+        "č. 3/2018": { "itemIssue": "3", "itemYear": "2018" },
+        "Únor": { "itemIssue": "2" }
     }
     return dict_.get(text)
 
