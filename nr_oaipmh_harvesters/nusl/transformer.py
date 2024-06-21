@@ -432,6 +432,11 @@ def transform_7112_event(md, entry, value):
 def parse_place(place):
     res = {}
     
+    if place.lower() == "online":
+        return {
+            "place": place
+        }
+
     if re.search(r'\(\-\)', place):
         # no country code, therefore no place
         return res
@@ -445,7 +450,7 @@ def parse_place(place):
     else:
         country = place_array[-1].replace(")", "").strip().upper()
         country = re.sub(r"\W", "", country)
-    
+
     place = place_array[0].strip()
     if place:
         countries = vocabulary_cache.by_id("countries", "id")
