@@ -568,10 +568,18 @@ def parse_item_issue(text: str):
             "itemYear": year
         }
 
-    number_match = re.match(r'^No\.\s+(\d+),\s+(\d+)$', text)
+    number_match = re.match(r'^No\.\s+(\d+)$', text)
     if number_match:
+        # Item issues with year in the format "No. issue"
+        issue = number_match.groups()[0]
+        return { 
+            "itemIssue": issue,
+        }
+
+    number_year_match = re.match(r'^No\.\s+(\d+),\s+(\d+)$', text)
+    if number_year_match:
         # Item issues with year in the format "No. issue, year"
-        issue, year = number_match.groups()
+        issue, year = number_year_match.groups()
         return { 
             "itemIssue": issue,
             "itemYear": year
@@ -595,7 +603,11 @@ def parse_item_issue(text: str):
         "Vol. 19, Nos. 1/2/3": { "itemVolume": "19", "itemIssue": "1-3"},
         "Ročník 22, číslo 4": { "itemVolume": "22", "itemIssue": "4" },
         "č. 3/2018": { "itemIssue": "3", "itemYear": "2018" },
-        "Únor": { "itemIssue": "2" }
+        "Únor": { "itemIssue": "2" },
+        "číslo 4": { "itemIssue": "4" },
+        "Nos 1/2/3": { "itemIssue": "1-3" },
+        "číslo 7-8/2022": { "itemIssue": "7-8", "itemYear": "2022" },
+        "č. 6 (2022)": { "itemIssue": "6", "itemYear": "2022" }
     }
     return dict_.get(text)
 
