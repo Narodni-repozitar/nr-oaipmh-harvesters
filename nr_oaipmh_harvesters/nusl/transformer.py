@@ -191,7 +191,7 @@ def transform_046_date_modified(md, entry, value):
     if isinstance(value, list):
         value = list(filter(lambda x: x is not None, value))
         value = value = None if not value else value[0]
-    
+
     md["dateModified"] = convert_to_date(value)
 
 
@@ -200,13 +200,13 @@ def transform_046_date_issued(md, entry, value):
     if isinstance(value, list):
         value = list(filter(lambda x: x is not None, value))
         value = None if not value else value[0]
-    
+
     if value is None:
         return
-    
+
     if value.startswith("c"):
         value = value[1:]
-    
+
     if len(value) == 8 and all(c.isdigit() for c in value):
         # iso 8601 date formats, e. g., YYYY-MM-DD or DD-MM-YYYY
         def is_valid_date(date_str, date_format):
@@ -215,15 +215,15 @@ def transform_046_date_issued(md, entry, value):
                 return True
             except ValueError:
                 return False
-            
+
         if is_valid_date(value, "%Y%m%d"):
             md["dateIssued"] = value[:4]
             return
-        
+
         if is_valid_date(value, "%d%m%Y") or is_valid_date(value, "%m%d%Y"):
             md["dateIssued"] = value[-4:]
             return
-    
+
     date_issued = convert_to_date(value)
     md["dateIssued"] = date_issued
 
@@ -233,7 +233,7 @@ def transform_245_title(md, entry, value):
     if isinstance(value, list):
         value = list(filter(lambda x: x is not None, value))
         value = None if not value else value[0]
-        
+
     md["title"] = value
 
 
@@ -241,31 +241,31 @@ def transform_245_title(md, entry, value):
 def transform_245_translated_title(md, entry, value):
     if value is None:
         return
-    
+
     if isinstance(value, list):
         value = list(filter(lambda x: x is not None, value))
         if not value:
             return
-        
+
         value = value[0]
-    
+
     md.setdefault("additionalTitles", []).append(
         {"title": {"lang": "en", "value": value}, "titleType": "translatedTitle"}
     )
-    
+
     if "title" not in md or md["title"] is None:
         md["title"] = value
 
 
 @matches("24630n", "24630p")
-def transform_246_title_alternate(md, entry, val):    
+def transform_246_title_alternate(md, entry, val):
     _transform_title(md, entry, "alternativeTitle", val)
 
 
 def _transform_title(md, entry, titleType, val):
     if val is None:
         return
-    
+
     try:
         lang_entry = entry.entry.get("04107a")
         if isinstance(lang_entry, list):
@@ -295,7 +295,7 @@ def transform_24633a_subtitle(md, entry, val):
 def transform_24633b_subtitle(md, entry, val):
     if val is None:
         return
-    
+
     md.setdefault("additionalTitles", []).append(
         {"title": {"lang": "en", "value": val}, "titleType": "subtitle"}
     )
@@ -331,7 +331,7 @@ def transform_520_abstract(md, entry, value):
 @matches("598__a")
 def transform_598_note(md, entry, value):
     if value is None:
-        return 
+        return
 
     md.setdefault("notes", []).append(value)
 
@@ -354,7 +354,7 @@ def transform_650_7_subject(md, entry, value):
 def transform_subject(md, value):
     if any(v is None for v in value):
         return
-    
+
     purl = value[3] or ""
     val_url = (
         purl if purl.startswith("http://") or purl.startswith("https://") else None
@@ -431,20 +431,20 @@ def transform_7112_event(md, entry, value):
 
 def parse_place(place):
     res = {}
-    
-    if place.lower() == "online":
-        return {
-            "place": place
-        }
 
-    if re.search(r'\(\-\)', place):
+    if place.lower() == "online":
+        return {"place": place}
+
+    if re.search(r"\(\-\)", place):
         # no country code, therefore no place
         return res
-    
+
     place_array = place.strip().rsplit("(", 1)
-    
+
     # matches multiple countries (2+) e.g. (CZ, SK, PL)
-    multiple_countries_match = re.search(r'\(([a-zA-Z][a-zA-Z]+)(,\s*[a-zA-Z][a-zA-Z]+)+\)', place)
+    multiple_countries_match = re.search(
+        r"\(([a-zA-Z][a-zA-Z]+)(,\s*[a-zA-Z][a-zA-Z]+)+\)", place
+    )
     if multiple_countries_match:
         country = multiple_countries_match.group(1).strip().upper()
     else:
@@ -460,42 +460,72 @@ def parse_place(place):
         res["country"] = {"id": country}
     return res
 
+
 @matches("720__a", unique=True)
 def transform_720_creator(md, entry, value):
-    if value:
-        md.setdefault("creators", []).append(
-            {"fullName": value, "nameType": resolve_name_type(value)}
-        )
+    if not value:
+        return
+
+    value = value.strip()
+    if value == "et. al.":
+        # Note: Temporary ignore for collective authors.
+        # We are waiting for a decision how to deal with this.
+        return
+
+    if not (name_type := resolve_name_type(value)):
+        return
+
+    creator = {
+        "fullName": value,
+        "nameType": name_type,
+    }
+
+    if name_type == "Personal":
+        names = value.split(",")
+        familyName = names[0].strip()
+        givenName = "".join(names[1:]).strip(",").strip()
+
+        creator["givenName"] = givenName
+        creator["familyName"] = familyName
+
+    md.setdefault("creators", []).append(creator)
 
 
 @matches("720__i", "720__e", paired=True, unique=True)
 def transform_720_contributor(md, entry, value):
-    if value[0]:
-        name_type = resolve_name_type(value[0])
-        if not name_type:
-            return
-        
-        contributor_types = vocabulary_cache.by_id("contributor-types", "id", "title")
-        role_from_vocab = { "id": contributor_types["other"]["id"] }
-        role = value[1]
-        if role:
-            for contributor_type in contributor_types.values():
-                if role == contributor_type["title"]["cs"] or role == contributor_type["title"]["en"]:
-                    role_from_vocab["id"] = contributor_types[contributor_type["title"]["en"]]["id"]
-        
-        md.setdefault("contributors", []).append(
-            make_dict(
-                # full name
-                "fullName",
-                value[0],
-                # type of the contributor - only person supported by now
-                "nameType",
-                name_type,
-                # role of the contributor
-                "contributorType",
-                role_from_vocab,
-            )
-        )
+    if not value or not value[0]:
+        return
+
+    fullName, role = value[0].strip(), value[1]
+    if not (name_type := resolve_name_type(fullName)):
+        return
+
+    contributor_types = vocabulary_cache.by_id("contributor-types", "id", "title")
+    role_from_vocab = {"id": contributor_types["other"]["id"]}
+    if role:
+        for contributor_type in contributor_types.values():
+            if (
+                role == contributor_type["title"]["cs"]
+                or role == contributor_type["title"]["en"]
+            ):
+                role_from_vocab["id"] = contributor_types[
+                    contributor_type["title"]["en"]
+                ]["id"]
+
+    contributor = {
+        "fullName": fullName,
+        "nameType": name_type,
+        "contributorType": role_from_vocab,
+    }
+    if name_type == "Personal":
+        names = fullName.split(",")
+        familyName = names[0].strip()
+        givenName = "".join(names[1:]).strip(",").strip()
+
+        contributor["givenName"] = givenName
+        contributor["familyName"] = familyName
+
+    md.setdefault("contributors", []).append(contributor)
 
 
 @matches("7731_t", "7731_z", "7731_x", "7731_g", paired=True)
@@ -554,39 +584,35 @@ def parse_isbn(value, identifiers):
 
 
 def parse_item_issue(text: str):
-    if re.match(r'^\d+$|^\d+[-–]\d+$', text):
+    if re.match(r"^\d+$|^\d+[-–]\d+$", text):
         # Item issues in the format issue/issueStart-issueEnd
-        return {
-            "itemIssue": text
-        }
+        return {"itemIssue": text}
 
-    if re.match(r'^\d+/\d+$', text):
+    if re.match(r"^\d+/\d+$", text):
         # Item issues with year in the format issue/year
-        issue, year = text.split('/')
-        return {
-            "itemIssue": issue,
-            "itemYear": year
-        }
+        issue, year = text.split("/")
+        return {"itemIssue": issue, "itemYear": year}
 
-    number_match = re.match(r'^No\.\s+(\d+)$', text)
+    number_match = re.match(r"^No\.\s+(\d+)$", text)
     if number_match:
         # Item issues with year in the format "No. issue"
         issue = number_match.groups()[0]
-        return { 
+        return {
             "itemIssue": issue,
         }
 
-    number_year_match = re.match(r'^No\.\s+(\d+),\s+(\d+)$', text)
+    number_year_match = re.match(r"^No\.\s+(\d+),\s+(\d+)$", text)
     if number_year_match:
         # Item issues with year in the format "No. issue, year"
         issue, year = number_year_match.groups()
-        return { 
-            "itemIssue": issue,
-            "itemYear": year
-        }
+        return {"itemIssue": issue, "itemYear": year}
 
     dict_ = {
-        "Roč. 22, č. 2 (2011)": { "itemVolume": "22", "itemIssue": "2", "itemYear": "2011" },
+        "Roč. 22, č. 2 (2011)": {
+            "itemVolume": "22",
+            "itemIssue": "2",
+            "itemYear": "2011",
+        },
         "2008": {"itemYear": "2008"},
         "Roč. 19 (2013)": {"itemVolume": "19", "itemYear": "2013"},
         "Roč. 2016": {"itemYear": "2016"},
@@ -596,18 +622,26 @@ def parse_item_issue(text: str):
             "itemStartPage": "76",
             "itemEndPage": "86",
         },
-        "roč. 7 (2021), 23": { "itemVolume": "7", "itemYear": "2021", "itemIssue": "23" },
-        "ročník XXXII , č. 6 (2022)": { "itemVolume": "32", "itemIssue": "6", "itemYear": "2022" },
-        "Únor 2022": { "itemIssue": "2", "itemYear": "2022" },
-        "ročník 72, číslo 7–8/2022": { "itemVolume": "72", "itemIssue": "7–8", "itemYear": "2022" },
-        "Vol. 19, Nos. 1/2/3": { "itemVolume": "19", "itemIssue": "1-3"},
-        "Ročník 22, číslo 4": { "itemVolume": "22", "itemIssue": "4" },
-        "č. 3/2018": { "itemIssue": "3", "itemYear": "2018" },
-        "Únor": { "itemIssue": "2" },
-        "číslo 4": { "itemIssue": "4" },
-        "Nos 1/2/3": { "itemIssue": "1-3" },
-        "číslo 7-8/2022": { "itemIssue": "7-8", "itemYear": "2022" },
-        "č. 6 (2022)": { "itemIssue": "6", "itemYear": "2022" }
+        "roč. 7 (2021), 23": {"itemVolume": "7", "itemYear": "2021", "itemIssue": "23"},
+        "ročník XXXII , č. 6 (2022)": {
+            "itemVolume": "32",
+            "itemIssue": "6",
+            "itemYear": "2022",
+        },
+        "Únor 2022": {"itemIssue": "2", "itemYear": "2022"},
+        "ročník 72, číslo 7–8/2022": {
+            "itemVolume": "72",
+            "itemIssue": "7–8",
+            "itemYear": "2022",
+        },
+        "Vol. 19, Nos. 1/2/3": {"itemVolume": "19", "itemIssue": "1-3"},
+        "Ročník 22, číslo 4": {"itemVolume": "22", "itemIssue": "4"},
+        "č. 3/2018": {"itemIssue": "3", "itemYear": "2018"},
+        "Únor": {"itemIssue": "2"},
+        "číslo 4": {"itemIssue": "4"},
+        "Nos 1/2/3": {"itemIssue": "1-3"},
+        "číslo 7-8/2022": {"itemIssue": "7-8", "itemYear": "2022"},
+        "č. 6 (2022)": {"itemIssue": "6", "itemYear": "2022"},
     }
     return dict_.get(text)
 
@@ -1045,9 +1079,9 @@ def get_funder_from_id(funder_id: str):
     slug = dict_.get(id_prefix)
     funders = vocabulary_cache.by_id("funders")
     if slug not in funders:
-        print(
-            f"Funder {funder_id} with prefix {slug} is not in currently known funders {list(sorted(funders.keys()))}"
-        )
+        # print(
+        #     f"Funder {funder_id} with prefix {slug} is not in currently known funders {list(sorted(funders.keys()))}"
+        # )
         return None
     funder = funders[slug]
     return funder
@@ -1379,90 +1413,155 @@ def convert_to_date(value):
 
 vocabulary_cache = VocabularyCache()
 
+
 def resolve_name_type(value):
     """
     Based on the given value of creator or contributor, applies heuristic rules
     to determine the `nameType`. When none of the rules applied, default is `Personal`.
-    
-    Returns either `Organizational` or `Personal`. 
+
+    Returns either `Organizational` or `Personal`.
     """
     try:
         inst = vocabulary_cache.get_institution(value)
     except KeyError:
         return None
-    
+
     if inst:
         return "Organizational"
-    
+
+    if value in SPECIAL_ORGANIZATIONS:
+        return "Organizational"
+
     titles = []
     for candidate in ACADEMIC_TITLES:
         titles.extend(add_word_borders_and_lowercase(candidate))
     if any(title in value for title in titles):
         return "Personal"
-    
+
     organizational_hypernyms = []
     for candidate in ORGANIZATIONAL_HYPERNYMS:
         organizational_hypernyms.extend(add_word_borders_and_lowercase(candidate))
     if any(org_hypernym in value for org_hypernym in organizational_hypernyms):
         return "Organizational"
-    
+
     companies_endings = []
     for candidate in COMPANIES_ENDINGS:
         companies_endings.extend(add_word_borders_and_lowercase(candidate))
     if any(company_ending in value for company_ending in companies_endings):
         return "Organizational"
-    
+
     return "Personal"
-    
+
+
 ACADEMIC_TITLES = [
-    'Bc.', 'BcA.', 'CSc.', 'DiS.', 'Dr.', 'DrSc.', 'ICDr.', 'Ing.', 'Ing. arch.', 'JUDr.',
-    'MDDr.', 'MgA.', 'Mgr.', 'MSDr.', 'MUDr.', 'MVDr.', 'PaedDr.', 'Ph.D.', 'PharmDr.', 
-    'PhDr.', 'PhMr.', 'RCDr.', 'RTDr.', 'RNDr.', 'RSDr.', 'ThDr.', 'Th.D.', 'ThLic.',
-    'dr. h. c.', 'Prof.', 'Doc.',
-    'MBA', 'DBA', 'LL.M.',
+    "Bc.",
+    "BcA.",
+    "CSc.",
+    "DiS.",
+    "Dr.",
+    "DrSc.",
+    "ICDr.",
+    "Ing.",
+    "Ing. arch.",
+    "JUDr.",
+    "MDDr.",
+    "MgA.",
+    "Mgr.",
+    "MSDr.",
+    "MUDr.",
+    "MVDr.",
+    "PaedDr.",
+    "Ph.D.",
+    "PharmDr.",
+    "PhDr.",
+    "PhMr.",
+    "RCDr.",
+    "RTDr.",
+    "RNDr.",
+    "RSDr.",
+    "ThDr.",
+    "Th.D.",
+    "ThLic.",
+    "dr. h. c.",
+    "Prof.",
+    "Doc.",
+    "MBA",
+    "DBA",
+    "LL.M.",
 ]
 
 COMPANIES_ENDINGS = [
-    's.r.o.', 's. r. o.', 'a.s.', 'a. s.', 'spol.', 'o.p.s.', 'o. p. s.'
+    "s.r.o.",
+    "s. r. o.",
+    "a.s.",
+    "a. s.",
+    "spol.",
+    "o.p.s.",
+    "o. p. s.",
+    "z.s."
 ]
 
 ORGANIZATIONAL_HYPERNYMS = [
-    'Univerzita',
-    'Univerzity',
-    'Universita',
-    'Fakulta',
-    'Fakulty',
-    'Fakultní',
-    'Katedra',
-    'Katedry',
-    'Centrum',
-    'Ústav',
-    'Správa',
-    'Správy',
-    'Institut',
-    'Oddělení',
-    'Odděleni',
-    'Agentura',
-    'Agentury',
-    'Akademie',
-    'Ministerstva',
-    'Ministerstvo',
-    'Odbor',
-    'Úřad',
-    'Odd.',
-    'Asociace',
-    'Stanice',
-    'Činnost',
-    'Společnost',
-    'Středisko',
-    'Česká',
-    'Český',
-    'Škola',
-    'Kolektiv',
-    'Sdružení',
-    'Národní',
-    '(firma)',
-    'Muzeum',
+    "Univerzita",
+    "Univerzity",
+    "Universita",
+    "Fakulta",
+    "Fakulty",
+    "Fakultní",
+    "Katedra",
+    "Katedry",
+    "Centrum",
+    "Ústav",
+    "Správa",
+    "Správy",
+    "Institut",
+    "Oddělení",
+    "Odděleni",
+    "Agentura",
+    "Agentury",
+    "Akademie",
+    "Ministerstva",
+    "Ministerstvo",
+    "Odbor",
+    "Úřad",
+    "Odd.",
+    "Asociace",
+    "Stanice",
+    "Činnost",
+    "Společnost",
+    "Středisko",
+    "Česká",
+    "Český",
+    "Škola",
+    "Kolektiv",
+    "Sdružení",
+    "Národní",
+    "(firma)",
+    "Muzeum",
+    "Museum",
+    "Knihovna",
+    "Hnutí",
+    "Organizace",
+    "Památník",
+    "International"
+]
+
+# Note:
+# This list's purpose is only because we don't have a clear mean of distinguishing between organization/personal creator/contributor.
+# Strings below make were not caught by above "heuristics" and therefore this serves as a temporary solution (to an already temporary solution :-) ).
+SPECIAL_ORGANIZATIONS = [
+    "Sachsenforst",
+    "PNP",
+    "VÚBP",
+    "VÚPP",
+    "IUCN/SSC",
+    "NÚV",
+    "IDS",
+    "Skog + Landskap",
+    "SocioFactor",
+    "Think-tank Evropské hodnoty",
+    "Photon",
+    "Migration Policy Task Force"
 ]
 
 def add_word_borders_and_lowercase(word):
@@ -1475,5 +1574,12 @@ def add_word_borders_and_lowercase(word):
     word_in_the_middle_lower = " " + word.lower() + " "
     word_at_the_end = " " + word
     word_at_the_end_lower = " " + word.lower()
-    
-    return [word_at_beginning, word_at_beginning.lower(), word_in_the_middle, word_in_the_middle_lower, word_at_the_end, word_at_the_end_lower]
+
+    return [
+        word_at_beginning,
+        word_at_beginning.lower(),
+        word_in_the_middle,
+        word_in_the_middle_lower,
+        word_at_the_end,
+        word_at_the_end_lower,
+    ]
