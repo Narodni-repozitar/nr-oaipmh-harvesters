@@ -85,8 +85,7 @@ class NUSLTransformer(OAIRuleTransformer):
         transform_586_defended(md, entry)  # obhajeno == true
         transform_656_study_field(md, entry)
 
-        # TODO: convert this to a community and add support for communities in general
-        # transform_998_collection(md, entry)
+        transform_998_collection(md, entry)
 
         deduplicate(md, "languages")
         deduplicate(md, "contributors")
@@ -1193,15 +1192,29 @@ def transform_656_study_field(md, entry, value):
 
 @matches("998__a")
 def transform_998_collection(md, entry, value):
-    md["collection"] = {
-        "univerzita_karlova_v_praze": "Univerzita Karlova",
-        "vutbr": "Vysoké učení technické v Brně",
-        "vysoka_skola_ekonomicka_v_praze": "Vysoká škola ekonomická v Praze",
-        "jihoceska_univerzita_v_ceskych_budejovicich": "Jihočeská univerzita v Českých Budějovicích",
-        "mendelova_univerzita_v_brne": "Mendelova univerzita v Brně",
-        "ceska_zemedelska_univerzita": "Česká zemědělská univerzita v Praze",
-        "akademie_muzickych_umeni_v_praze": "Akademie múzických umění v Praze",
-    }.get(value, value)
+    from invenio_communities.proxies import current_communities
+    from invenio_access.permissions import system_identity
+
+    # Note:
+    # Keys are legacy NUSL ids that are no longer used, values are their new values.
+    # Because there are still records with legacy NUSL ids, this mapping is needed.
+    legacy_nusl_id_mapping_to_slug = {
+        "centrum_pro_vyzkum_verejneho_mineni": "sociologicky-ustav",
+        "katedra_socialni_geografie_prf": "univerzita-karlova-v-praze",
+        "ustav_pro_dejiny_umeni_ff_uk": "univerzita-karlova-v-praze",
+        "farmakologicky_ustav": "ustav-experimentalni-mediciny",
+        "ustav_fyzikalniho_inzenyrstvi": "ustav-termomechaniky",
+        "ustav_pro_elektrotechniku": "ustav-termomechaniky"
+    }
+    nusl_id = legacy_nusl_id_mapping_to_slug.get(value, value)
+    slug = nusl_id.replace("_", "-")
+
+    slug_filter = dsl.Q("term", **{ "slug": slug })
+    results = current_communities.service.search(system_identity, extra_filter=slug_filter)
+    if not results:
+        raise ValueError(f"{value} is not a valid slug for any community.")
+    community = list(results)[0]
+    entry.transformed.setdefault("parent", {}).setdefault("communities", {})["default"] = community["id"]
 
 
 @matches("502__a")
