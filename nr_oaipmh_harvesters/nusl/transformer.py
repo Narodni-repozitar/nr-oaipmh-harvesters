@@ -9,7 +9,7 @@ from oarepo_oaipmh_harvester.transformers.rule import (
     make_dict,
     make_array,
 )
-from oarepo_runtime.datastreams.types import StreamEntry
+from oarepo_runtime.datastreams.types import StreamEntry, StreamEntryFile
 import pycountry
 
 from invenio_cache.proxies import current_cache
@@ -87,6 +87,8 @@ class NUSLTransformer(OAIRuleTransformer):
 
         transform_998_collection(md, entry)
 
+        transform_856_attachments(md, entry)
+
         deduplicate(md, "languages")
         deduplicate(md, "contributors")
         deduplicate(md, "subjects")
@@ -108,8 +110,8 @@ class NUSLTransformer(OAIRuleTransformer):
         ignore(entry, "506__a")  # "public"
         ignore(entry, "655_72")  # "NUŠL typ dokumentu"
         ignore(entry, "655_7a")  # "Disertační práce"
-        ignore(entry, "8564_u")  # odkaz na soubor
-        ignore(entry, "8564_z")  # nazev/typ souboru "plny text"
+        # ignore(entry, "8564_u")  # odkaz na soubor
+        # ignore(entry, "8564_z")  # nazev/typ souboru "plny text"
         ignore(entry, "8564_x")  # "icon"
         ignore(entry, "996__9")  # "0"
         ignore(entry, "656_72")  # "AKVO"
@@ -156,6 +158,13 @@ class NUSLTransformer(OAIRuleTransformer):
 
         return True
 
+@matches("8564_u", "8564_z", paired=True)
+def transform_856_attachments(md, entry, value):
+    link, name = value
+    if name is None or name.endswith("gif"):
+        return
+    # TODO: use name for the type
+    entry.files.append(StreamEntryFile({ "key": link }, link))
 
 @matches("001")
 def transform_001_control_number(md, entry, value):
