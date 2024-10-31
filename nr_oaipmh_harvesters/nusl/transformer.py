@@ -163,8 +163,8 @@ def transform_856_attachments(md, entry, value):
     link, name = value
     if name is None or name.endswith("gif"):
         return
-    # TODO: use name for the type
-    entry.files.append(StreamEntryFile({ "key": link }, link))
+    filename = link.split("/")[-1]
+    entry.files.append(StreamEntryFile({ "key": filename }, link))
 
 @matches("001")
 def transform_001_control_number(md, entry, value):
