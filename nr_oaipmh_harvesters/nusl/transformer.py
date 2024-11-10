@@ -39,6 +39,8 @@ class NUSLTransformer(OAIRuleTransformer):
     def transform(self, entry: StreamEntry):
         md = entry.transformed.setdefault("metadata", {})
 
+        entry.transformed.setdefault("files", {})["enabled"] = False
+
         transform_001_control_number(md, entry)
         transform_020_isbn(md, entry)
         transform_022_issn(md, entry)
@@ -165,6 +167,7 @@ def transform_856_attachments(md, entry, value):
         return
     filename = link.split("/")[-1]
     entry.files.append(StreamEntryFile({ "key": filename }, link))
+    entry.transformed["files"]["enabled"] = True
 
 @matches("001")
 def transform_001_control_number(md, entry, value):
