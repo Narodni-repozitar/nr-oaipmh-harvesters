@@ -11,6 +11,7 @@ from oarepo_oaipmh_harvester.transformers.rule import (
 )
 from oarepo_runtime.datastreams.types import StreamEntry, StreamEntryFile
 import pycountry
+from typing import Dict, List, Tuple, Union
 
 from invenio_cache.proxies import current_cache
 
@@ -273,30 +274,6 @@ def transform_246_title_alternate(md, entry, val):
     _transform_title(md, entry, "alternativeTitle", val)
 
 
-def _transform_title(md, entry, titleType, val):
-    if val is None:
-        return
-
-    try:
-        lang_entry = entry.entry.get("04107a")
-        if isinstance(lang_entry, list):
-            lang_entry = list(filter(lambda x: x is not None, lang_entry))
-            lang_entry = None if not lang_entry else lang_entry[0]
-
-        lang = get_alpha2_lang(lang_entry)
-        md.setdefault("additionalTitles", []).append(
-            {"title": {"lang": lang, "value": val}, "titleType": titleType}
-        )
-    except LookupError:
-        # append it with the original language, marshmallow will take care of that
-        md.setdefault("additionalTitles", []).append(
-            {
-                "title": {"lang": lang_entry, "value": val},
-                "titleType": titleType,
-            }
-        )
-
-
 @matches("24633a")
 def transform_24633a_subtitle(md, entry, val):
     _transform_title(md, entry, "subtitle", val)
@@ -471,33 +448,37 @@ def parse_place(place):
         res["country"] = {"id": country}
     return res
 
-
-@matches("720__a", unique=True)
+@matches("720__a", "720__5", "720__6", paired=True, unique=True)
 def transform_720_creator(md, entry, value):
-    if not value:
+    if not value or not value[0]:
         return
 
-    value = value.strip()
-    if value == "et. al.":
-        # Note: Temporary ignore for collective authors.
-        # We are waiting for a decision how to deal with this.
+    name, affiliations, identifiers = value
+    name = name.strip()
+    
+    # Note: Temporary ignore for collective authors.
+    # We are waiting for a decision how to deal with this.
+    if name == "et. al.":
         return
 
-    if not (name_type := resolve_name_type(value)):
+    if not (name_type := resolve_name_type(name)):
         return
 
     creator = {
-        "fullName": value,
+        "fullName": name,
         "nameType": name_type,
+        "authorityIdentifiers": process_identifiers(identifiers, name_type == "Personal")
     }
 
     if name_type == "Personal":
-        names = value.split(",")
-        familyName = names[0].strip()
-        givenName = "".join(names[1:]).strip(",").strip()
-
-        creator["givenName"] = givenName
-        creator["familyName"] = familyName
+        given_name, family_name = parse_personal_name(name)
+        creator.update({
+            "givenName": given_name,
+            "familyName": family_name
+        })
+        
+        if affiliations:
+            creator["affiliations"] = process_affiliations(affiliations)
 
     md.setdefault("creators", []).append(creator)
 
@@ -1608,3 +1589,83 @@ def add_word_borders_and_lowercase(word):
         word_at_the_end,
         word_at_the_end_lower,
     ]
+
+def parse_identifier(identifier: str) -> Tuple[str, str]:
+    """Parse an identifier string into scheme and value."""
+    if "ScopusID" in identifier:
+        return "scopusID", identifier.split(": ")[1]
+    elif "ResearcherID" in identifier:
+        return "researcherID", identifier.split(": ")[1]
+    elif "orcid" in identifier:
+        return "orcid", identifier
+    elif "ICO" in identifier:
+        return "ICO", identifier.split(": ")[1]
+    elif "ror" in identifier:
+        return "ROR", identifier
+    return "", ""
+
+def create_identifier_object(scheme: str, identifier: str) -> Dict[str, str]:
+    """Create a standardized identifier object."""
+    return {
+        "scheme": scheme,
+        "identifier": identifier
+    }
+
+def process_identifiers(identifiers: Union[str, List[str]], is_personal: bool) -> List[Dict[str, str]]:
+    """Process either a single identifier or a list of identifiers."""
+    if not identifiers:
+        return []
+        
+    if isinstance(identifiers, list):
+        return [
+            create_identifier_object(*parse_identifier(idf))
+            for idf in identifiers
+        ]
+    
+    scheme, identifier = parse_identifier(identifiers)
+    return [create_identifier_object(scheme, identifier)]
+
+def process_affiliations(affiliations: Union[str, List[str]]) -> List[Dict[str, str]]:
+    """Process affiliations into standardized format."""
+    if not affiliations:
+        return []
+        
+    def create_affiliation(aff: str) -> Dict[str, str]:
+        return {
+            "id": f"ror:{aff.split('/')[-1]}",
+            "ror": aff
+        }
+    
+    if isinstance(affiliations, list):
+        return [create_affiliation(aff) for aff in affiliations]
+    return [create_affiliation(affiliations)]
+
+def parse_personal_name(name: str) -> Tuple[str, str]:
+    """Split personal name into given name and family name."""
+    names = name.split(",")
+    family_name = names[0].strip()
+    given_name = "".join(names[1:]).strip(",").strip()
+    return given_name, family_name
+
+def _transform_title(md, entry, titleType, val):
+    if val is None:
+        return
+
+    try:
+        lang_entry = entry.entry.get("04107a")
+        if isinstance(lang_entry, list):
+            lang_entry = list(filter(lambda x: x is not None, lang_entry))
+            lang_entry = None if not lang_entry else lang_entry[0]
+
+        lang = get_alpha2_lang(lang_entry)
+        md.setdefault("additionalTitles", []).append(
+            {"title": {"lang": lang, "value": val}, "titleType": titleType}
+        )
+    except LookupError:
+        # append it with the original language, marshmallow will take care of that
+        md.setdefault("additionalTitles", []).append(
+            {
+                "title": {"lang": lang_entry, "value": val},
+                "titleType": titleType,
+            }
+        )
