@@ -11,6 +11,7 @@ from oarepo_oaipmh_harvester.transformers.rule import (
 )
 from oarepo_runtime.datastreams.types import StreamEntry, StreamEntryFile
 import pycountry
+from typing import Dict, List, Optional, Tuple, Union
 
 from invenio_cache.proxies import current_cache
 
@@ -172,28 +173,28 @@ def transform_856_attachments(md, entry, value):
 @matches("001")
 def transform_001_control_number(md, entry, value):
     md.setdefault("systemIdentifiers", []).append(
-        {"identifier": "http://www.nusl.cz/ntk/nusl-" + value, "scheme": "nusl"}
+        _create_identifier_object("nusl", "http://www.nusl.cz/ntk/nusl-" + value)
     )
 
 
 @matches("020__a")
 def transform_020_isbn(md, entry, value):
     md.setdefault("objectIdentifiers", []).append(
-        {"identifier": value, "scheme": "ISBN"}
+        _create_identifier_object("ISBN", value)
     )
 
 
 @matches("022__a")
 def transform_022_issn(md, entry, value):
     md.setdefault("objectIdentifiers", []).append(
-        {"identifier": value, "scheme": "ISSN"}
+        _create_identifier_object("ISSN", value)
     )
 
 
 @matches("035__a")
 def transform_035_original_record_oai(md, entry, value):
     md.setdefault("systemIdentifiers", []).append(
-        {"identifier": value, "scheme": "originalRecordOAI"}
+        _create_identifier_object("originalRecordOAI", value)
     )
 
 
@@ -271,30 +272,6 @@ def transform_245_translated_title(md, entry, value):
 @matches("24630n", "24630p")
 def transform_246_title_alternate(md, entry, val):
     _transform_title(md, entry, "alternativeTitle", val)
-
-
-def _transform_title(md, entry, titleType, val):
-    if val is None:
-        return
-
-    try:
-        lang_entry = entry.entry.get("04107a")
-        if isinstance(lang_entry, list):
-            lang_entry = list(filter(lambda x: x is not None, lang_entry))
-            lang_entry = None if not lang_entry else lang_entry[0]
-
-        lang = get_alpha2_lang(lang_entry)
-        md.setdefault("additionalTitles", []).append(
-            {"title": {"lang": lang, "value": val}, "titleType": titleType}
-        )
-    except LookupError:
-        # append it with the original language, marshmallow will take care of that
-        md.setdefault("additionalTitles", []).append(
-            {
-                "title": {"lang": lang_entry, "value": val},
-                "titleType": titleType,
-            }
-        )
 
 
 @matches("24633a")
@@ -471,70 +448,47 @@ def parse_place(place):
         res["country"] = {"id": country}
     return res
 
-
-@matches("720__a", unique=True)
-def transform_720_creator(md, entry, value):
-    if not value:
+@matches("720__a", "720__5", "720__6", paired=True, unique=True)
+def transform_720_creator(md: Dict, entry: Dict, value: Tuple) -> None:
+    if not value or not value[0] or value[0] == "et. al.":
         return
 
-    value = value.strip()
-    if value == "et. al.":
-        # Note: Temporary ignore for collective authors.
-        # We are waiting for a decision how to deal with this.
-        return
+    name, affiliations, identifiers = value
+    name_type, authority_identifiers, processed_affiliations = _process_person_info(
+        name, affiliations, identifiers
+    )
 
-    if not (name_type := resolve_name_type(value)):
-        return
-
-    creator = {
-        "fullName": value,
-        "nameType": name_type,
-    }
-
-    if name_type == "Personal":
-        names = value.split(",")
-        familyName = names[0].strip()
-        givenName = "".join(names[1:]).strip(",").strip()
-
-        creator["givenName"] = givenName
-        creator["familyName"] = familyName
-
+    creator = _create_person_dict(
+        name, name_type, authority_identifiers, processed_affiliations
+    )
+    
     md.setdefault("creators", []).append(creator)
 
-
-@matches("720__i", "720__e", paired=True, unique=True)
-def transform_720_contributor(md, entry, value):
+@matches("720__i", "720__e", "720__5", "720__6", paired=True, unique=True)
+def transform_720_contributor(md: Dict, entry: Dict, value: Tuple) -> None:
     if not value or not value[0]:
         return
 
-    fullName, role = value[0].strip(), value[1]
-    if not (name_type := resolve_name_type(fullName)):
-        return
+    name, role, affiliations, identifiers = value
+    name_type, authority_identifiers, processed_affiliations = _process_person_info(
+        name, affiliations, identifiers
+    )
 
     contributor_types = vocabulary_cache.by_id("contributor-types", "id", "title")
     role_from_vocab = {"id": contributor_types["other"]["id"]}
+    
     if role:
         for contributor_type in contributor_types.values():
-            if (
-                role == contributor_type["title"]["cs"]
-                or role == contributor_type["title"]["en"]
-            ):
+            if role in (contributor_type["title"]["cs"], contributor_type["title"]["en"]):
                 role_from_vocab["id"] = contributor_types[
                     contributor_type["title"]["en"]
                 ]["id"]
+                break
 
-    contributor = {
-        "fullName": fullName,
-        "nameType": name_type,
-        "contributorType": role_from_vocab,
-    }
-    if name_type == "Personal":
-        names = fullName.split(",")
-        familyName = names[0].strip()
-        givenName = "".join(names[1:]).strip(",").strip()
-
-        contributor["givenName"] = givenName
-        contributor["familyName"] = familyName
+    contributor = _create_person_dict(
+        name, name_type, authority_identifiers, processed_affiliations
+    )
+    contributor["contributorType"] = role_from_vocab
 
     md.setdefault("contributors", []).append(contributor)
 
@@ -577,7 +531,7 @@ def parse_issn(value, identifiers):
         vv = re.sub("[^a-zA-Z0-9-]", "", vv)
         if not vv or vv == "N":
             continue
-        identifiers.append({"identifier": vv, "scheme": "ISSN"})
+        identifiers.append(_create_identifier_object("ISSN", vv))
 
 
 def parse_isbn(value, identifiers):
@@ -591,7 +545,7 @@ def parse_isbn(value, identifiers):
             vv = vv[1:-1]
         if not vv or vv == "N":
             continue
-        identifiers.append({"identifier": vv, "scheme": "ISBN"})
+        identifiers.append(_create_identifier_object("ISBN", vv))
 
 
 def parse_item_issue(text: str):
@@ -663,7 +617,7 @@ def transform_85640_original_record_url(md, entry, value):
         md["originalRecord"] = value[0]
         if "hdl.handle.net" in value[0]:
             md.setdefault("objectIdentifiers", []).append(
-                {"scheme": "Handle", "identifier": value[0]}
+                _create_identifier_object("Handle", value[0])
             )
 
 
@@ -675,7 +629,7 @@ def transform_85642_external_location(md, entry, value):
 @matches("970__a")
 def transform_970_catalogue_sysno(md, entry, value):
     md.setdefault("systemIdentifiers", []).append(
-        {"identifier": value, "scheme": "catalogueSysNo"}
+        _create_identifier_object("catalogueSysNo", value)
     )
 
 
@@ -1151,10 +1105,7 @@ def parse_rights(text):
 
 def transform_oai_identifier(md, entry):
     md.setdefault("systemIdentifiers", []).append(
-        {
-            "identifier": entry.context["oai"]["identifier"],
-            "scheme": "nuslOAI",
-        }
+        _create_identifier_object("nuslOAI", entry.context["oai"]["identifier"])
     )
 
 
@@ -1335,6 +1286,16 @@ class VocabularyCache:
         current_cache.set(cache_key, ret, timeout=DEFAULT_VOCABULARY_CACHE_TTL)
         return ret
 
+    def by_ico(self, ico):
+        from invenio_vocabularies.proxies import current_service
+        from invenio_access.permissions import system_identity
+
+        q = f'props.ICO:"{ico}"'
+        resp = current_service.search(
+            system_identity, type="institutions", params={"q": q}
+        )
+        return "Organizational" if len(list(resp)) > 0 else None
+
     def _get_institution_score(self, inst_string, candidate, ancestors):
         def powerset(iterable):
             s = list(iterable)
@@ -1439,172 +1400,173 @@ def convert_to_date(value):
 vocabulary_cache = VocabularyCache()
 
 
-def resolve_name_type(value):
+def resolve_name_type(value, ico=None):
     """
     Based on the given value of creator or contributor, applies heuristic rules
     to determine the `nameType`. When none of the rules applied, default is `Personal`.
 
     Returns either `Organizational` or `Personal`.
     """
+    value = value.strip()
     try:
         inst = vocabulary_cache.get_institution(value)
     except KeyError:
         return None
 
+    if ico:
+        try:
+            inst = vocabulary_cache.by_ico(ico)
+        except KeyError:
+            return None
+
     if inst:
-        return "Organizational"
-
-    if value in SPECIAL_ORGANIZATIONS:
-        return "Organizational"
-
-    titles = []
-    for candidate in ACADEMIC_TITLES:
-        titles.extend(add_word_borders_and_lowercase(candidate))
-    if any(title in value for title in titles):
-        return "Personal"
-
-    organizational_hypernyms = []
-    for candidate in ORGANIZATIONAL_HYPERNYMS:
-        organizational_hypernyms.extend(add_word_borders_and_lowercase(candidate))
-    if any(org_hypernym in value for org_hypernym in organizational_hypernyms):
-        return "Organizational"
-
-    companies_endings = []
-    for candidate in COMPANIES_ENDINGS:
-        companies_endings.extend(add_word_borders_and_lowercase(candidate))
-    if any(company_ending in value for company_ending in companies_endings):
         return "Organizational"
 
     return "Personal"
 
+def _process_person_info(
+    name: str,
+    affiliations: Optional[Union[str, List[str]]] = None,
+    identifiers: Optional[Union[str, List[str]]] = None
+) -> Tuple[str, List[Dict], List[Dict]]:
+    """Process common person information for both creators and contributors."""
+    name_type = ""
+    authority_identifiers = []
+    processed_affiliations = []
 
-ACADEMIC_TITLES = [
-    "Bc.",
-    "BcA.",
-    "CSc.",
-    "DiS.",
-    "Dr.",
-    "DrSc.",
-    "ICDr.",
-    "Ing.",
-    "Ing. arch.",
-    "JUDr.",
-    "MDDr.",
-    "MgA.",
-    "Mgr.",
-    "MSDr.",
-    "MUDr.",
-    "MVDr.",
-    "PaedDr.",
-    "Ph.D.",
-    "PharmDr.",
-    "PhDr.",
-    "PhMr.",
-    "RCDr.",
-    "RTDr.",
-    "RNDr.",
-    "RSDr.",
-    "ThDr.",
-    "Th.D.",
-    "ThLic.",
-    "dr. h. c.",
-    "Prof.",
-    "Doc.",
-    "MBA",
-    "DBA",
-    "LL.M.",
-]
+    # Process affiliations
+    if affiliations:
+        affiliations = [affiliations] if isinstance(affiliations, str) else [aff for aff in affiliations if aff]
+        if any("ror" in aff for aff in affiliations):
+            name_type = "Personal"
+        processed_affiliations = _process_affiliations(affiliations)
 
-COMPANIES_ENDINGS = [
-    "s.r.o.",
-    "s. r. o.",
-    "a.s.",
-    "a. s.",
-    "spol.",
-    "o.p.s.",
-    "o. p. s.",
-    "z.s."
-]
+    # Process identifiers
+    if identifiers:
+        identifiers = [identifiers] if isinstance(identifiers, str) else [idf for idf in identifiers if idf]
+        if any("ror" in idf for idf in identifiers):
+            name_type = "Organizational"
+        authority_identifiers = [
+            _create_identifier_object(*_parse_identifier(idf))
+            for idf in identifiers
+            if idf
+        ]
 
-ORGANIZATIONAL_HYPERNYMS = [
-    "Univerzita",
-    "Univerzity",
-    "Universita",
-    "Fakulta",
-    "Fakulty",
-    "Fakultní",
-    "Katedra",
-    "Katedry",
-    "Centrum",
-    "Ústav",
-    "Správa",
-    "Správy",
-    "Institut",
-    "Oddělení",
-    "Odděleni",
-    "Agentura",
-    "Agentury",
-    "Akademie",
-    "Ministerstva",
-    "Ministerstvo",
-    "Odbor",
-    "Úřad",
-    "Odd.",
-    "Asociace",
-    "Stanice",
-    "Činnost",
-    "Společnost",
-    "Středisko",
-    "Česká",
-    "Český",
-    "Škola",
-    "Kolektiv",
-    "Sdružení",
-    "Národní",
-    "(firma)",
-    "Muzeum",
-    "Museum",
-    "Knihovna",
-    "Hnutí",
-    "Organizace",
-    "Památník",
-    "International"
-]
+    # Determine name type if not already set
+    if not name_type:
+        ico_idf = [idf for idf in identifiers if "ICO" in idf] if identifiers else []
+        if ico_idf:
+            name_type = resolve_name_type(name, ico_idf[0].split(": ")[1])
+        else:
+            name_type = resolve_name_type(name)
 
-# Note:
-# This list's purpose is only because we don't have a clear mean of distinguishing between organization/personal creator/contributor.
-# Strings below make were not caught by above "heuristics" and therefore this serves as a temporary solution (to an already temporary solution :-) ).
-SPECIAL_ORGANIZATIONS = [
-    "Sachsenforst",
-    "PNP",
-    "VÚBP",
-    "VÚPP",
-    "IUCN/SSC",
-    "NÚV",
-    "IDS",
-    "Skog + Landskap",
-    "SocioFactor",
-    "Think-tank Evropské hodnoty",
-    "Photon",
-    "Migration Policy Task Force"
-]
+    return name_type, authority_identifiers, processed_affiliations
 
-def add_word_borders_and_lowercase(word):
-    """
-    Incorporates word bounds for a given word in the text and takes into account where the word can be in the sentence.
-    Also adds lowercase variant.
-    """
-    word_at_beginning = word + " "
-    word_in_the_middle = " " + word + " "
-    word_in_the_middle_lower = " " + word.lower() + " "
-    word_at_the_end = " " + word
-    word_at_the_end_lower = " " + word.lower()
+def _create_person_dict(
+    name: str,
+    name_type: str,
+    authority_identifiers: List[Dict],
+    affiliations: Optional[List[Dict]] = None
+) -> Dict:
+    """Create a base dictionary for a person (creator or contributor)."""
+    person_dict = {
+        "fullName": name,
+        "nameType": name_type,
+        "authorityIdentifiers": authority_identifiers
+    }
 
-    return [
-        word_at_beginning,
-        word_at_beginning.lower(),
-        word_in_the_middle,
-        word_in_the_middle_lower,
-        word_at_the_end,
-        word_at_the_end_lower,
-    ]
+    if name_type == "Personal":
+        given_name, family_name = _parse_personal_name(name)
+        person_dict.update({
+            "givenName": given_name,
+            "familyName": family_name
+        })
+        
+        if affiliations:
+            person_dict["affiliations"] = affiliations
+
+    return person_dict
+
+def _parse_identifier(identifier: str) -> Tuple[str, str]:
+    if "ScopusID" in identifier:
+        return "scopusID", identifier.split(": ")[1]
+    elif "ResearcherID" in identifier:
+        return "researcherID", identifier.split(": ")[1]
+    elif "orcid" in identifier:
+        return "orcid", identifier
+    elif "ICO" in identifier:
+        return "ICO", identifier.split(": ")[1]
+    elif "ror" in identifier:
+        return "ROR", identifier
+    else:
+        raise ValueError(f"Undefined scheme for the identifier: {identifier}")
+
+def _create_identifier_object(scheme: str, identifier: str) -> Dict[str, str]:
+    return {
+        "scheme": scheme,
+        "identifier": identifier
+    }
+
+def _process_affiliations(affiliations: List[str]) -> List[Dict[str, str]]:
+    from invenio_vocabularies.proxies import current_service
+    from invenio_access.permissions import system_identity
+
+    def _prepare_affiliation_query(affiliation: str):
+        if "ror" in affiliation:
+            escaped_url = lucene_escape(affiliation)
+            return f'relatedURI.ROR:"{escaped_url}"'
+        elif "ICO" in affiliation:
+            return f'props.ICO:"{affiliation.split(": ")[-1]}"'
+        else:
+            escaped_name = lucene_escape(affiliation)
+            candidates = [
+                "props.acronym",
+                "title.en",
+                "title.cs",
+                "nonpreferredLabels.cs",
+                "nonpreferredLabels.en"
+            ]
+            return " OR ".join([f'{candidate}:"{escaped_name}"' for candidate in candidates])
+
+    vocabulary_affiliations = []
+    for affiliation in affiliations:
+        query = _prepare_affiliation_query(affiliation)
+        resp = current_service.search(
+            system_identity, type="institutions", params={"q": query}
+        )
+
+        try:
+            vocabulary_affiliations.append(list(resp)[0])
+        except IndexError:
+            raise ValueError(f"Affiliation: '{affiliation}' not found in the institution vocabulary.")
+
+    return vocabulary_affiliations
+
+def _parse_personal_name(name: str) -> Tuple[str, str]:
+    names = name.split(",")
+    family_name = names[0].strip()
+    given_name = "".join(names[1:]).strip(",").strip()
+    return given_name, family_name
+
+def _transform_title(md, entry, titleType, val):
+    if val is None:
+        return
+
+    try:
+        lang_entry = entry.entry.get("04107a")
+        if isinstance(lang_entry, list):
+            lang_entry = list(filter(lambda x: x is not None, lang_entry))
+            lang_entry = None if not lang_entry else lang_entry[0]
+
+        lang = get_alpha2_lang(lang_entry)
+        md.setdefault("additionalTitles", []).append(
+            {"title": {"lang": lang, "value": val}, "titleType": titleType}
+        )
+    except LookupError:
+        # append it with the original language, marshmallow will take care of that
+        md.setdefault("additionalTitles", []).append(
+            {
+                "title": {"lang": lang_entry, "value": val},
+                "titleType": titleType,
+            }
+        )
