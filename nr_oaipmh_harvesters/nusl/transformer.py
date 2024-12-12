@@ -91,6 +91,9 @@ class NUSLTransformer(OAIRuleTransformer):
         transform_998_collection(md, entry)
 
         transform_856_attachments(md, entry)
+        if not entry.transformed["files"]["enabled"] and "accessRights" not in md:
+            # if no files and no accessibility was set, then set the access rights to metadata
+            md["accessRights"] = { "id": access_right_dict["0"] }
 
         deduplicate(md, "languages")
         deduplicate(md, "contributors")
@@ -164,11 +167,13 @@ class NUSLTransformer(OAIRuleTransformer):
 @matches("8564_u", "8564_z", paired=True)
 def transform_856_attachments(md, entry, value):
     link, name = value
-    if name is None or name.endswith("gif"):
-        return
-    filename = link.split("/")[-1]
+    if name is not None:
+        filename = link.split("/")[-1]
     entry.files.append(StreamEntryFile({ "key": filename }, link))
     entry.transformed["files"]["enabled"] = True
+
+    if "accessRights" not in md:
+        md["accessRights"] = { "id": access_right_dict["1"] }
 
 @matches("001")
 def transform_001_control_number(md, entry, value):
