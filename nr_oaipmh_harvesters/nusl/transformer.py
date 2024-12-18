@@ -166,9 +166,8 @@ class NUSLTransformer(OAIRuleTransformer):
 
 @matches("8564_u", "8564_z", paired=True)
 def transform_856_attachments(md, entry, value):
-    link, name = value
-    if name is not None:
-        filename = link.split("/")[-1]
+    link, _ = value
+    filename = link.split("/")[-1]
     entry.files.append(StreamEntryFile({ "key": filename }, link))
     entry.transformed["files"]["enabled"] = True
 
