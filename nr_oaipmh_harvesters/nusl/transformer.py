@@ -204,19 +204,14 @@ def transform_035_original_record_oai(md, entry, value):
 
 @matches("046__j")
 def transform_046_date_modified(md, entry, value):
-    if isinstance(value, list):
-        value = list(filter(lambda x: x is not None, value))
-        value = value = None if not value else value[0]
-
+    if value is None:
+        return
+    
     md["dateModified"] = convert_to_date(value)
 
 
 @matches("046__k")
 def transform_046_date_issued(md, entry, value):
-    if isinstance(value, list):
-        value = list(filter(lambda x: x is not None, value))
-        value = None if not value else value[0]
-
     if value is None:
         return
 
@@ -246,9 +241,8 @@ def transform_046_date_issued(md, entry, value):
 
 @matches("24500a")
 def transform_245_title(md, entry, value):
-    if isinstance(value, list):
-        value = list(filter(lambda x: x is not None, value))
-        value = None if not value else value[0]
+    if value is None:
+        return
 
     md["title"] = value
 
@@ -258,19 +252,9 @@ def transform_245_translated_title(md, entry, value):
     if value is None:
         return
 
-    if isinstance(value, list):
-        value = list(filter(lambda x: x is not None, value))
-        if not value:
-            return
-
-        value = value[0]
-
     md.setdefault("additionalTitles", []).append(
         {"title": {"lang": "en", "value": value}, "titleType": "translatedTitle"}
     )
-
-    if "title" not in md or md["title"] is None:
-        md["title"] = value
 
 
 @matches("24630n", "24630p")
@@ -540,6 +524,8 @@ def parse_issn(value, identifiers):
 
 def parse_isbn(value, identifiers):
     for vv in re.split("[,;]", value):
+        vv.replace("(CZ)", "")
+        vv.replace("(EN)", "")
         vv = vv.strip()
         if vv.lower().startswith("isbn:"):
             vv = vv[5:].strip()
