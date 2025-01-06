@@ -269,9 +269,6 @@ def transform_245_translated_title(md, entry, value):
         {"title": {"lang": "en", "value": value}, "titleType": "translatedTitle"}
     )
 
-    if "title" not in md or md["title"] is None:
-        md["title"] = value
-
 
 @matches("24630n", "24630p")
 def transform_246_title_alternate(md, entry, val):
