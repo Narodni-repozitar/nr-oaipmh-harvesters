@@ -540,6 +540,8 @@ def parse_issn(value, identifiers):
 
 def parse_isbn(value, identifiers):
     for vv in re.split("[,;]", value):
+        vv.replace("(CZ)", "")
+        vv.replace("(EN)", "")
         vv = vv.strip()
         if vv.lower().startswith("isbn:"):
             vv = vv[5:].strip()
