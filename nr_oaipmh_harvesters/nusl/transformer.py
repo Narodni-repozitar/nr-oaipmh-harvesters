@@ -204,19 +204,14 @@ def transform_035_original_record_oai(md, entry, value):
 
 @matches("046__j")
 def transform_046_date_modified(md, entry, value):
-    if isinstance(value, list):
-        value = list(filter(lambda x: x is not None, value))
-        value = value = None if not value else value[0]
-
+    if value is None:
+        return
+    
     md["dateModified"] = convert_to_date(value)
 
 
 @matches("046__k")
 def transform_046_date_issued(md, entry, value):
-    if isinstance(value, list):
-        value = list(filter(lambda x: x is not None, value))
-        value = None if not value else value[0]
-
     if value is None:
         return
 
@@ -246,9 +241,8 @@ def transform_046_date_issued(md, entry, value):
 
 @matches("24500a")
 def transform_245_title(md, entry, value):
-    if isinstance(value, list):
-        value = list(filter(lambda x: x is not None, value))
-        value = None if not value else value[0]
+    if value is None:
+        return
 
     md["title"] = value
 
@@ -257,13 +251,6 @@ def transform_245_title(md, entry, value):
 def transform_245_translated_title(md, entry, value):
     if value is None:
         return
-
-    if isinstance(value, list):
-        value = list(filter(lambda x: x is not None, value))
-        if not value:
-            return
-
-        value = value[0]
 
     md.setdefault("additionalTitles", []).append(
         {"title": {"lang": "en", "value": value}, "titleType": "translatedTitle"}
