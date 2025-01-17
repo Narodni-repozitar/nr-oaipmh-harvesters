@@ -171,8 +171,7 @@ def transform_856_attachments(md, entry, value):
     entry.files.append(StreamEntryFile({ "key": filename }, link))
     entry.transformed["files"]["enabled"] = True
 
-    if "accessRights" not in md:
-        md["accessRights"] = { "id": access_right_dict["1"] }
+    md["accessRights"] = { "id": access_right_dict["1"] }
 
 @matches("001")
 def transform_001_control_number(md, entry, value):
