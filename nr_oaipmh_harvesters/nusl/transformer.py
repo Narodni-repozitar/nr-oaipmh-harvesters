@@ -663,7 +663,7 @@ def transform_980_resource_type(md, entry, value):
             "katalogy_vystav": "exhibition-catalogue-or-guide",
             "pruvodce_expozici": "exhibition-catalogue-or-guide",
             "'pruvodce_expozici": "exhibition-catalogue-or-guide",
-        }.get(value, "other")
+        }.get(value.strip(), "other")
 
     resource_type = vocabulary_cache.by_id("resource-types")[value]
 
