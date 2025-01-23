@@ -480,32 +480,31 @@ def transform_720_contributor(md: Dict, entry: Dict, value: Tuple) -> None:
     md.setdefault("contributors", []).append(contributor)
 
 
-@matches("7731_t", "7731_z", "7731_x", "7731_g", paired=True)
+@matches("7731_e", "7731_f", "7731_g", "7731_z", "7731_t", "7731_x", paired=True)
 def transform_7731_related_item(md, entry, value):
-    item_volume_issue = value[3]
-    if item_volume_issue:
-        item_volume_issue_parsed = parse_item_issue(item_volume_issue)
-        if not item_volume_issue_parsed:
-            item_volume_issue_parsed = {
-                "itemIssue": item_volume_issue,
-                "error": "Bad format",
-            }
-    else:
-        item_volume_issue_parsed = {}
+    item_year, item_volume, item_issue, item_pids_isbn, item_title, item_pids_issn = value
+
+    parsed = {
+        k: v for k, v in {
+            "itemYear": item_year,
+            "itemVolume": item_volume,
+            "itemIssue": item_issue
+        }.items() if v
+    }
 
     identifiers = []
-    if value[1]:
-        parse_isbn(value[1], identifiers)
-
-    if value[2]:
-        parse_issn(value[2], identifiers)
+    if item_pids_isbn:
+        parse_isbn(item_pids_isbn, identifiers)
+    if item_pids_issn:
+        parse_issn(item_pids_issn, identifiers)
 
     md.setdefault("relatedItems", []).append(
         {
-            **make_dict("itemTitle", value[0], "itemPIDs", identifiers),
-            **item_volume_issue_parsed,
+            **make_dict("itemTitle", item_title, "itemPIDs", identifiers),
+            **parsed,
         }
     )
+    print()
 
 
 def parse_issn(value, identifiers):
@@ -522,82 +521,17 @@ def parse_issn(value, identifiers):
 
 
 def parse_isbn(value, identifiers):
-    for vv in re.split("[,;]", value):
-        vv.replace("(CZ)", "")
-        vv.replace("(EN)", "")
-        vv = vv.strip()
-        if vv.lower().startswith("isbn:"):
-            vv = vv[5:].strip()
-        if vv.lower().startswith("isbn"):
-            vv = vv[4:].strip()
-        if vv.startswith("(") and vv.endswith(")"):
-            vv = vv[1:-1]
-        if not vv or vv == "N":
-            continue
-        identifiers.append(_create_identifier_object("ISBN", vv))
-
-
-def parse_item_issue(text: str):
-    if re.match(r"^\d+$|^\d+[-–]\d+$", text):
-        # Item issues in the format issue/issueStart-issueEnd
-        return {"itemIssue": text}
-
-    if re.match(r"^\d+/\d+$", text):
-        # Item issues with year in the format issue/year
-        issue, year = text.split("/")
-        return {"itemIssue": issue, "itemYear": year}
-
-    number_match = re.match(r"^No\.\s+(\d+)$", text)
-    if number_match:
-        # Item issues with year in the format "No. issue"
-        issue = number_match.groups()[0]
-        return {
-            "itemIssue": issue,
-        }
-
-    number_year_match = re.match(r"^No\.\s+(\d+),\s+(\d+)$", text)
-    if number_year_match:
-        # Item issues with year in the format "No. issue, year"
-        issue, year = number_year_match.groups()
-        return {"itemIssue": issue, "itemYear": year}
-
-    dict_ = {
-        "Roč. 22, č. 2 (2011)": {
-            "itemVolume": "22",
-            "itemIssue": "2",
-            "itemYear": "2011",
-        },
-        "2008": {"itemYear": "2008"},
-        "Roč. 19 (2013)": {"itemVolume": "19", "itemYear": "2013"},
-        "Roč. 2016": {"itemYear": "2016"},
-        "roč. 2, č. 2, s. 76-86": {
-            "itemVolume": "2",
-            "itemIssue": "2",
-            "itemStartPage": "76",
-            "itemEndPage": "86",
-        },
-        "roč. 7 (2021), 23": {"itemVolume": "7", "itemYear": "2021", "itemIssue": "23"},
-        "ročník XXXII , č. 6 (2022)": {
-            "itemVolume": "32",
-            "itemIssue": "6",
-            "itemYear": "2022",
-        },
-        "Únor 2022": {"itemIssue": "2", "itemYear": "2022"},
-        "ročník 72, číslo 7–8/2022": {
-            "itemVolume": "72",
-            "itemIssue": "7–8",
-            "itemYear": "2022",
-        },
-        "Vol. 19, Nos. 1/2/3": {"itemVolume": "19", "itemIssue": "1-3"},
-        "Ročník 22, číslo 4": {"itemVolume": "22", "itemIssue": "4"},
-        "č. 3/2018": {"itemIssue": "3", "itemYear": "2018"},
-        "Únor": {"itemIssue": "2"},
-        "číslo 4": {"itemIssue": "4"},
-        "Nos 1/2/3": {"itemIssue": "1-3"},
-        "číslo 7-8/2022": {"itemIssue": "7-8", "itemYear": "2022"},
-        "č. 6 (2022)": {"itemIssue": "6", "itemYear": "2022"},
-    }
-    return dict_.get(text)
+   for isbn in re.split("[,;]", value):
+       isbn = (isbn.strip()
+                  .lower()
+                  .replace("(CZ)", "")
+                  .replace("(EN)", "")
+                  .strip("()")
+                  .removeprefix("isbn:")
+                  .removeprefix("isbn")
+                  .strip())
+       if isbn and isbn != "n":
+           identifiers.append(_create_identifier_object("ISBN", isbn))
 
 
 @matches("85640u", "85640z", paired=True)
