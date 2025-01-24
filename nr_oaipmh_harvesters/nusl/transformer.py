@@ -536,8 +536,8 @@ def parse_isbn(value, identifiers):
    for isbn in re.split("[,;]", value):
        isbn = (isbn.strip()
                   .lower()
-                  .replace("(CZ)", "")
-                  .replace("(EN)", "")
+                  .replace("(cz)", "")
+                  .replace("(en)", "")
                   .strip("()")
                   .removeprefix("isbn:")
                   .removeprefix("isbn")
