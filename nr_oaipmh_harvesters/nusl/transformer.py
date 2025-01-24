@@ -182,15 +182,27 @@ def transform_001_control_number(md, entry, value):
 
 @matches("020__a")
 def transform_020_isbn(md, entry, value):
+    if not value:
+        return
+    
+    identifiers = []
+    parse_isbn(value, identifiers)
+
     md.setdefault("objectIdentifiers", []).append(
-        _create_identifier_object("ISBN", value)
+        identifiers[0]
     )
 
 
 @matches("022__a")
 def transform_022_issn(md, entry, value):
+    if not value:
+        return
+    
+    identifiers = []
+    parse_issn(value, identifiers)
+
     md.setdefault("objectIdentifiers", []).append(
-        _create_identifier_object("ISSN", value)
+        identifiers[0]
     )
 
 
