@@ -659,8 +659,10 @@ def get_access_rights(text=None, slug=None):
     return {"id": slug}
 
 
-@matches("999C1a", "999C1b")
+@matches("999C1a", "999C1b", paired=True)
 def transform_999C1_funding_reference(md, entry, val):
+    # Handle what happens when project ID is missing.
+
     if val is None:
         return
     
