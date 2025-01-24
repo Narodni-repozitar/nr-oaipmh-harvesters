@@ -182,15 +182,27 @@ def transform_001_control_number(md, entry, value):
 
 @matches("020__a")
 def transform_020_isbn(md, entry, value):
+    if not value:
+        return
+    
+    identifiers = []
+    parse_isbn(value, identifiers)
+
     md.setdefault("objectIdentifiers", []).append(
-        _create_identifier_object("ISBN", value)
+        identifiers[0]
     )
 
 
 @matches("022__a")
 def transform_022_issn(md, entry, value):
+    if not value:
+        return
+    
+    identifiers = []
+    parse_issn(value, identifiers)
+
     md.setdefault("objectIdentifiers", []).append(
-        _create_identifier_object("ISSN", value)
+        identifiers[0]
     )
 
 
@@ -524,8 +536,8 @@ def parse_isbn(value, identifiers):
    for isbn in re.split("[,;]", value):
        isbn = (isbn.strip()
                   .lower()
-                  .replace("(CZ)", "")
-                  .replace("(EN)", "")
+                  .replace("(cz)", "")
+                  .replace("(en)", "")
                   .strip("()")
                   .removeprefix("isbn:")
                   .removeprefix("isbn")
@@ -659,8 +671,10 @@ def get_access_rights(text=None, slug=None):
     return {"id": slug}
 
 
-@matches("999C1a", "999C1b")
+@matches("999C1a", "999C1b", paired=True)
 def transform_999C1_funding_reference(md, entry, val):
+    # Handle what happens when project ID is missing.
+
     if val is None:
         return
     
