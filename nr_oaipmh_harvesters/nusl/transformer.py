@@ -182,9 +182,6 @@ def transform_001_control_number(md, entry, value):
 
 @matches("020__a")
 def transform_020_isbn(md, entry, value):
-    if not value:
-        return
-    
     identifiers = []
     parse_isbn(value, identifiers)
 
@@ -195,9 +192,6 @@ def transform_020_isbn(md, entry, value):
 
 @matches("022__a")
 def transform_022_issn(md, entry, value):
-    if not value:
-        return
-    
     identifiers = []
     parse_issn(value, identifiers)
 
@@ -215,17 +209,11 @@ def transform_035_original_record_oai(md, entry, value):
 
 @matches("046__j")
 def transform_046_date_modified(md, entry, value):
-    if value is None:
-        return
-    
     md["dateModified"] = convert_to_date(value)
 
 
 @matches("046__k")
 def transform_046_date_issued(md, entry, value):
-    if value is None:
-        return
-
     if value.startswith("c"):
         value = value[1:]
 
@@ -252,17 +240,11 @@ def transform_046_date_issued(md, entry, value):
 
 @matches("24500a")
 def transform_245_title(md, entry, value):
-    if value is None:
-        return
-
     md["title"] = value
 
 
 @matches("24500b")
 def transform_245_translated_title(md, entry, value):
-    if value is None:
-        return
-
     md.setdefault("additionalTitles", []).append(
         {"title": {"lang": "en", "value": value}, "titleType": "translatedTitle"}
     )
@@ -280,9 +262,6 @@ def transform_24633a_subtitle(md, entry, val):
 
 @matches("24633b")
 def transform_24633b_subtitle(md, entry, val):
-    if val is None:
-        return
-
     md.setdefault("additionalTitles", []).append(
         {"title": {"lang": "en", "value": val}, "titleType": "subtitle"}
     )
@@ -317,9 +296,6 @@ def transform_520_abstract(md, entry, value):
 
 @matches("598__a")
 def transform_598_note(md, entry, value):
-    if value is None:
-        return
-
     md.setdefault("notes", []).append(value)
 
 
@@ -446,7 +422,7 @@ def parse_place(place):
 
 @matches("720__a", "720__5", "720__6", paired=True, unique=True)
 def transform_720_creator(md: Dict, entry: Dict, value: Tuple) -> None:
-    if not value or not value[0] or value[0] == "et. al.":
+    if not value[0] or value[0] == "et. al.":
         return
 
     name, affiliations, identifiers = value
@@ -462,7 +438,7 @@ def transform_720_creator(md: Dict, entry: Dict, value: Tuple) -> None:
 
 @matches("720__i", "720__e", "720__5", "720__6", paired=True, unique=True)
 def transform_720_contributor(md: Dict, entry: Dict, value: Tuple) -> None:
-    if not value or not value[0]:
+    if not value[0]:
         return
 
     name, role, affiliations, identifiers = value
@@ -671,9 +647,6 @@ def get_access_rights(text=None, slug=None):
 @matches("999C1a", "999C1b", paired=True)
 def transform_999C1_funding_reference(md, entry, val):
     # Handle what happens when project ID is missing.
-
-    if val is None:
-        return
     
     project_id, funder = val
     if funder and project_id:
@@ -683,11 +656,10 @@ def transform_999C1_funding_reference(md, entry, val):
 
 @matches("04107a", "04107b")
 def transform_04107_language(md, entry, value):
-    if value:
-        try:
-            md.setdefault("languages", []).append({"id": get_alpha2_lang(value)})
-        except LookupError:
-            raise Exception(f"Bad language {value} - no alpha2 equivalent")
+    try:
+        md.setdefault("languages", []).append({"id": get_alpha2_lang(value)})
+    except LookupError:
+        raise Exception(f"Bad language {value} - no alpha2 equivalent")
 
 
 @matches("336__a")
