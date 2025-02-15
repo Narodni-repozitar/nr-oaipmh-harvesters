@@ -168,6 +168,10 @@ class NUSLTransformer(OAIRuleTransformer):
 def transform_856_attachments(md, entry, value):
     link, _ = value
     filename = link.split("/")[-1]
+    
+    if ".gif" in filename:
+        return
+    
     entry.files.append(StreamEntryFile({ "key": filename }, link))
     entry.transformed["files"]["enabled"] = True
 
