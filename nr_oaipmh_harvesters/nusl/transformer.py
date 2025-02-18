@@ -604,8 +604,26 @@ def transform_999C1_funding_reference(md, entry, val):
     
     project_id, funder = val
     if funder and project_id:
+        from invenio_vocabularies.proxies import current_service
+        from invenio_access.permissions import system_identity
+
+        try:
+            escaped_funder = lucene_escape(funder)
+            query_parts = [
+                'title.*:"{}"',
+                'props.acronym:"{}"',
+                'nonpreferredLabels.*:"{}"'
+            ]
+                        
+            query = " OR ".join(query_parts).format(escaped_funder)
+            
+            resp = current_service.search(system_identity, type="funders", params={"q": query})
+            matched_funder = list(resp)[0]
+        except sqlalchemy.exc.NoResultFound:
+            raise KeyError(f"Funder: '{funder}' has not been found")
+
         md.setdefault("fundingReferences", []).append(
-            make_dict("projectID", project_id, "funder", funder)
+            make_dict("projectID", project_id, "funder", matched_funder)
         )
 
 @matches("04107a", "04107b")
