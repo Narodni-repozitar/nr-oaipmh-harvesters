@@ -91,9 +91,6 @@ class NUSLTransformer(OAIRuleTransformer):
         transform_998_collection(md, entry)
 
         transform_856_attachments(md, entry)
-        if not entry.transformed["files"]["enabled"] and "accessRights" not in md:
-            # if no files and no accessibility was set, then set the access rights to metadata
-            md["accessRights"] = { "id": access_right_dict["0"] }
 
         deduplicate(md, "languages")
         deduplicate(md, "contributors")
@@ -174,8 +171,6 @@ def transform_856_attachments(md, entry, value):
     
     entry.files.append(StreamEntryFile({ "key": filename }, link))
     entry.transformed["files"]["enabled"] = True
-
-    md["accessRights"] = { "id": access_right_dict["1"] }
 
 @matches("001")
 def transform_001_control_number(md, entry, value):
@@ -601,51 +596,6 @@ def transform_996_accessibility(md, entry, value):
         value[1],
         {"lang": "en", "value": value[1]},
     )
-    if value[0]:
-        md["accessRights"] = get_access_rights(text=value[0])
-    else:
-        md["accessRights"] = get_access_rights(slug=value[2] or "c_abf2")
-
-
-access_right_dict = {
-    "0": "c_14cb",  # pouze metadata
-    "1": "c_abf2",  # open
-    "2": "c_16ec",  # omezeny
-}
-
-
-def get_access_rights(text=None, slug=None):
-    if not slug:
-        sentence_dict = {
-            "Dokument je dostupný v repozitáři Akademie věd.": "1",
-            "Dokumenty jsou dostupné v systému NK ČR.": "1",
-            "Plný text je dostupný v Digitální knihovně VUT.": "1",
-            "Dostupné v digitálním repozitáři VŠE.": "1",
-            "Plný text je dostupný v digitálním repozitáři JČU.": "1",
-            "Dostupné v digitálním repozitáři UK.": "1",
-            "Dostupné v digitálním repozitáři Mendelovy univerzity.": "1",
-            "Dostupné v repozitáři ČZU.": "1",
-            "Dostupné registrovaným uživatelům v digitálním repozitáři AMU.": "2",
-            "Dokument je dostupný v NLK. Dokument je dostupný též v digitální formě v Digitální "
-            "knihovně NLK. Přístup může být vázán na prohlížení z počítačů NLK.": "2",
-            "Dostupné v digitálním repozitáři UK (pouze z IP adres univerzity).": "2",
-            "Text práce je neveřejný, pro více informací kontaktujte osobu uvedenou v repozitáři "
-            "Mendelovy univerzity.": "2",
-            "Dokument je dostupný na vyžádání prostřednictvím repozitáře Akademie věd.": "2",
-            "Dokument je dostupný v příslušném ústavu Akademie věd ČR.": "0",
-            "Dokument je po domluvě dostupný v budově Ministerstva životního prostředí.": "0",
-            "Plný text není k dispozici.": "0",
-            "Dokument je dostupný v NLK.": "0",
-            "Dokument je po domluvě dostupný v budově <a "
-            'href="http://www.mzp.cz/__C125717D00521D29.nsf/index.html" '
-            'target="_blank">Ministerstva životního prostředí</a>.': "0",
-            "Dostupné registrovaným uživatelům v knihovně Mendelovy univerzity v Brně.": "2",
-            "Dostupné registrovaným uživatelům v repozitáři ČZU.": "2",
-            "Dokument je dostupný na externích webových stránkách.": "0",
-        }
-        slug = sentence_dict.get(text, "0")
-    slug = access_right_dict.get(slug, slug)
-    return {"id": slug}
 
 
 @matches("999C1a", "999C1b", paired=True)
