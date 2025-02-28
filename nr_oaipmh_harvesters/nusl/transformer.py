@@ -385,7 +385,7 @@ def transform_7112_event(md, entry, value):
         if place:
             event["eventLocation"] = place
 
-    return event
+    md.setdefault("event", {}).update(event)
 
 
 def parse_place(place):
