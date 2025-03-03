@@ -385,7 +385,7 @@ def transform_7112_event(md, entry, value):
         if place:
             event["eventLocation"] = place
 
-    md.setdefault("event", {}).update(event)
+    md.setdefault("events", []).append(event)
 
 
 def parse_place(place):
@@ -1023,7 +1023,7 @@ def convert_to_date(value):
     if value.endswith("]"):
         value = value[:-1]
     value = value.replace(" 00:00:00.0", "")
-    return value
+    return value.strip()
 
 
 vocabulary_cache = VocabularyCache()
