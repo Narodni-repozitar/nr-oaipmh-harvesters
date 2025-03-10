@@ -548,7 +548,8 @@ def transform_980_resource_type(md, entry, value):
         value = {
             "tematicke_sborniky": "book",
             "monografie": "book",
-            "preprinty": "article",
+            "preprinty": "article - submitted version",
+            "postprinty": "article - accepted version",
             "prispevky_z_konference": "paper",
             "sborniky": "proceeding",
             "programy": "programme",
