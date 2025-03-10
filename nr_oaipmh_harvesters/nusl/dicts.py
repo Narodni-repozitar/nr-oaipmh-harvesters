@@ -1,0 +1,56 @@
+resource_types = {
+    "tematicke_sborniky": "book",
+    "monografie": "book",
+    "preprinty": "article",
+    "prispevky_z_konference": "paper",
+    "sborniky": "proceeding",
+    "programy": "programme",
+    "postery": "poster",
+    "bakalarske_prace": "bachelor",
+    "diplomove_prace": "master",
+    "rigorozni_prace": "rigorous",
+    "disertacni_prace": "doctoral",
+    "habilitacni_prace": "post-doctoral",
+    "metodiky": "certified-methodology",
+    "vyrocni_zpravy": "annual",
+    "vyzkumne_zpravy": "research",
+    "technicke_zpravy": "research",
+    "zaverecne_zpravy_z_projektu": "project",
+    "prubezne_zpravy_z_projektu": "project",
+    "grantove_zpravy": "project",
+    "statisticke_zpravy": "statistical-or-status",
+    "zpravy_o_stavu": "statistical-or-status",
+    "zpravy_z_pruzkumu": "field",
+    "cestovni_zpravy": "business-trip",
+    "tiskove_zpravy": "press-release",
+    "firemni_tisk": "trade-literature",
+    "katalogy_vyrobku": "trade-literature",
+    "letaky": "trade-literature",
+    "vestniky": "trade-literature",
+    "brozury": "trade-literature",
+    "analyzy": "studies-and-analyses",
+    "studie": "studies-and-analyses",
+    "referaty": "educational-material",
+    "katalogy_vystav": "exhibition-catalogue-or-guide",
+    "pruvodce_expozici": "exhibition-catalogue-or-guide",
+    "'pruvodce_expozici": "exhibition-catalogue-or-guide",
+}
+
+rights = {
+    # 'Dílo je chráněno podle autorského zákona č. 121/2000 Sb.': 'copyright', # vyhozeno, protoze uz neni ve slovniku
+    # 'Text je chráněný podle autorského zákona č. 121/2000 Sb.': 'copyright', # vyhozeno, protoze uz neni ve slovniku
+    "Licence Creative Commons Uveďte autora 3.0 Česko": "3-BY-CZ",
+    "Licence Creative Commons Uveďte autora-Neužívejte dílo komerčně 3.0 Česko": "3-BY-NC-CZ",
+    "Licence Creative Commons Uveďte autora-Neužívejte dílo komerčně-Nezasahujte do díla 3.0 "
+    "Česko": "3-BY-NC-ND-CZ",
+    "Licence Creative Commons Uveďte autora-Neužívejte dílo komerčně-Zachovejte licenci 3.0 "
+    "Česko": "3-BY-NC-SA-CZ",
+    "Licence Creative Commons Uveďte autora-Nezasahujte do díla 3.0 Česko": "3-BY-ND-CZ",
+    "Licence Creative Commons Uveďte autora-Zachovejte licenci 3.0 Česko": "3-BY-SA-CZ",
+    "Licence Creative Commons Uveďte původ 4.0": "4-BY",
+    "Licence Creative Commons Uveďte původ-Neužívejte komerčně-Nezpracovávejte 4.0": "4-BY-NC-ND",
+    "Licence Creative Commons Uveďte původ-Neužívejte komerčně-Zachovejte licenci 4.0": "4-BY-NC-SA",
+    "Licence Creative Commons Uveďte původ-Zachovejte licenci 4.0": "4-BY-SA",
+    "LicenceCreativeCommonsUveďtepůvod-Nezpracovávejte4.0": "4-BY-ND",
+    "LicenceCreativeCommonsUveďtepůvod-Neužívejtekomerčně4.0": "4-BY-NC"
+}

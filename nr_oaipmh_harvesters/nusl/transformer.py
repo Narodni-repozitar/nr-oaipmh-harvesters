@@ -1,6 +1,12 @@
 from datetime import datetime
-import itertools
+from invenio_search.engine import dsl
+import Levenshtein
+import logging
+import pycountry
 import re
+from typing import Dict, List, Optional, Tuple, Union
+
+from dicts import resource_types, rights
 from oarepo_oaipmh_harvester.transformers.rule import (
     OAIRuleTransformer,
     matches,
@@ -10,31 +16,11 @@ from oarepo_oaipmh_harvester.transformers.rule import (
     make_array,
 )
 from oarepo_runtime.datastreams.types import StreamEntry, StreamEntryFile
-import pycountry
-from typing import Dict, List, Optional, Tuple, Union
-
-from invenio_cache.proxies import current_cache
-
-import logging
-
-import sqlalchemy
-import Levenshtein
-from invenio_search.engine import dsl
+from parse_utils import *
+from vocabulary_cache import VocabularyCache
 
 log = logging.getLogger("oaipmh.harvester")
-
-# will increase this in production
-DEFAULT_VOCABULARY_CACHE_TTL = 3600
-
-
-def get_alpha2_lang(lang):
-    py_lang = pycountry.languages.get(alpha_3=lang) or pycountry.languages.get(
-        bibliographic=lang
-    )
-    if not py_lang:
-        raise LookupError()
-    return py_lang.alpha_2
-
+vocabulary_cache = VocabularyCache()
 
 class NUSLTransformer(OAIRuleTransformer):
     def transform(self, entry: StreamEntry):
@@ -46,6 +32,7 @@ class NUSLTransformer(OAIRuleTransformer):
         transform_020_isbn(md, entry)
         transform_022_issn(md, entry)
         transform_035_original_record_oai(md, entry)
+        transform_04107_language(md, entry)
         transform_046_date_modified(md, entry)
         transform_046_date_issued(md, entry)
         transform_245_title(md, entry)
@@ -54,43 +41,35 @@ class NUSLTransformer(OAIRuleTransformer):
         transform_24633a_subtitle(md, entry)
         transform_24633b_subtitle(md, entry)
         transform_260_publisher(md, entry)
+        transform_336_certifikovana_metodika(md, entry)
         transform_490_series(md, entry)
+        transform_502_date_defended(md, entry)
+        transform_502_degree_grantor(md, entry)
         transform_520_abstract(md, entry)
+        transform_540_rights(md, entry)
+        transform_586_defended(md, entry)  # obhajeno == true
         transform_598_note(md, entry)
         transform_65007_subject(md, entry)
         transform_65017_subject(md, entry)
         transform_650_7_subject(md, entry)
         transform_6530_en_keywords(md, entry)
         transform_653_cs_keywords(md, entry)
+        transform_656_study_field(md, entry)
+        transform_7102_degree_grantor(md, entry)  # a a 9='cze'
         transform_7112_event(md, entry)
         transform_720_creator(md, entry)
         transform_720_contributor(md, entry)
         transform_7731_related_item(md, entry)
+        transform_856_attachments(md, entry)
         transform_85640_original_record_url(md, entry)
         transform_85642_external_location(md, entry)
         transform_970_catalogue_sysno(md, entry)
         transform_980_resource_type(md, entry)
         transform_996_accessibility(md, entry)
+        transform_998_collection(md, entry)
         transform_999C1_funding_reference(md, entry)
 
-        transform_04107_language(md, entry)
-        transform_336_certifikovana_metodika(md, entry)
-
-        transform_540_rights(md, entry)
-
         transform_oai_identifier(md, entry)
-
-        transform_502_degree_grantor(md, entry)
-        transform_7102_degree_grantor(md, entry)  # a a 9='cze'
-
-        transform_502_date_defended(md, entry)
-
-        transform_586_defended(md, entry)  # obhajeno == true
-        transform_656_study_field(md, entry)
-
-        transform_998_collection(md, entry)
-
-        transform_856_attachments(md, entry)
 
         deduplicate(md, "languages")
         deduplicate(md, "contributors")
@@ -161,17 +140,6 @@ class NUSLTransformer(OAIRuleTransformer):
 
         return True
 
-@matches("8564_u", "8564_z", paired=True)
-def transform_856_attachments(md, entry, value):
-    link, _ = value
-    filename = link.split("/")[-1]
-    
-    if ".gif" in filename:
-        return
-    
-    entry.files.append(StreamEntryFile({ "key": filename }, link))
-    entry.transformed["files"]["enabled"] = True
-
 @matches("001")
 def transform_001_control_number(md, entry, value):
     md.setdefault("systemIdentifiers", []).append(
@@ -205,6 +173,12 @@ def transform_035_original_record_oai(md, entry, value):
         _create_identifier_object("originalRecordOAI", value)
     )
 
+@matches("04107a", "04107b")
+def transform_04107_language(md, entry, value):
+    try:
+        md.setdefault("languages", []).append({"id": get_alpha2_lang(value)})
+    except LookupError:
+        raise Exception(f"Bad language {value} - no alpha2 equivalent")
 
 @matches("046__j")
 def transform_046_date_modified(md, entry, value):
@@ -488,34 +462,17 @@ def transform_7731_related_item(md, entry, value):
             **parsed,
         }
     )
-    print()
 
-
-def parse_issn(value, identifiers):
-    for vv in re.split("[,;]", value):
-        vv = vv.strip()
-        if vv.lower().startswith("issn:"):
-            vv = vv[5:].strip()
-        if vv.lower().startswith("issn"):
-            vv = vv[4:].strip()
-        vv = re.sub("[^a-zA-Z0-9-]", "", vv)
-        if not vv or vv == "N":
-            continue
-        identifiers.append(_create_identifier_object("ISSN", vv))
-
-
-def parse_isbn(value, identifiers):
-   for isbn in re.split("[,;]", value):
-       isbn = (isbn.strip()
-                  .lower()
-                  .replace("(cz)", "")
-                  .replace("(en)", "")
-                  .strip("()")
-                  .removeprefix("isbn:")
-                  .removeprefix("isbn")
-                  .strip())
-       if isbn and isbn != "n":
-           identifiers.append(_create_identifier_object("ISBN", isbn))
+@matches("8564_u", "8564_z", paired=True)
+def transform_856_attachments(md, entry, value):
+    link, _ = value
+    filename = link.split("/")[-1]
+    
+    if ".gif" in filename:
+        return
+    
+    entry.files.append(StreamEntryFile({ "key": filename }, link))
+    entry.transformed["files"]["enabled"] = True
 
 
 @matches("85640u", "85640z", paired=True)
@@ -545,43 +502,7 @@ def transform_980_resource_type(md, entry, value):
     if value == "metodiky" and "336__" not in entry.entry:
         value = "methodology-without-certification"
     else:
-        value = {
-            "tematicke_sborniky": "book",
-            "monografie": "book",
-            "preprinty": "article",
-            "prispevky_z_konference": "paper",
-            "sborniky": "proceeding",
-            "programy": "programme",
-            "postery": "poster",
-            "bakalarske_prace": "bachelor",
-            "diplomove_prace": "master",
-            "rigorozni_prace": "rigorous",
-            "disertacni_prace": "doctoral",
-            "habilitacni_prace": "post-doctoral",
-            "metodiky": "certified-methodology",
-            "vyrocni_zpravy": "annual",
-            "vyzkumne_zpravy": "research",
-            "technicke_zpravy": "research",
-            "zaverecne_zpravy_z_projektu": "project",
-            "prubezne_zpravy_z_projektu": "project",
-            "grantove_zpravy": "project",
-            "statisticke_zpravy": "statistical-or-status",
-            "zpravy_o_stavu": "statistical-or-status",
-            "zpravy_z_pruzkumu": "field",
-            "cestovni_zpravy": "business-trip",
-            "tiskove_zpravy": "press-release",
-            "firemni_tisk": "trade-literature",
-            "katalogy_vyrobku": "trade-literature",
-            "letaky": "trade-literature",
-            "vestniky": "trade-literature",
-            "brozury": "trade-literature",
-            "analyzy": "studies-and-analyses",
-            "studie": "studies-and-analyses",
-            "referaty": "educational-material",
-            "katalogy_vystav": "exhibition-catalogue-or-guide",
-            "pruvodce_expozici": "exhibition-catalogue-or-guide",
-            "'pruvodce_expozici": "exhibition-catalogue-or-guide",
-        }.get(value.strip(), "other")
+        value = resource_types.get(value.strip(), "other")
 
     resource_type = vocabulary_cache.by_id("resource-types")[value]
 
@@ -680,13 +601,6 @@ def transform_999C1_funding_reference(md, entry, val):
             make_dict("projectID", project_id, "funder", matched_funder)
         )
 
-@matches("04107a", "04107b")
-def transform_04107_language(md, entry, value):
-    try:
-        md.setdefault("languages", []).append({"id": get_alpha2_lang(value)})
-    except LookupError:
-        raise Exception(f"Bad language {value} - no alpha2 equivalent")
-
 
 @matches("336__a")
 def transform_336_certifikovana_metodika(md, entry, value):
@@ -703,33 +617,6 @@ def transform_540_rights(md, entry, value):
     rights = parse_rights(value[0])
     if rights:
         md.setdefault("rights", {}).update(rights)
-
-
-rights_dict = {
-    # 'Dílo je chráněno podle autorského zákona č. 121/2000 Sb.': 'copyright', # vyhozeno, protoze uz neni ve slovniku
-    # 'Text je chráněný podle autorského zákona č. 121/2000 Sb.': 'copyright', # vyhozeno, protoze uz neni ve slovniku
-    "Licence Creative Commons Uveďte autora 3.0 Česko": "3-BY-CZ",
-    "Licence Creative Commons Uveďte autora-Neužívejte dílo komerčně 3.0 Česko": "3-BY-NC-CZ",
-    "Licence Creative Commons Uveďte autora-Neužívejte dílo komerčně-Nezasahujte do díla 3.0 "
-    "Česko": "3-BY-NC-ND-CZ",
-    "Licence Creative Commons Uveďte autora-Neužívejte dílo komerčně-Zachovejte licenci 3.0 "
-    "Česko": "3-BY-NC-SA-CZ",
-    "Licence Creative Commons Uveďte autora-Nezasahujte do díla 3.0 Česko": "3-BY-ND-CZ",
-    "Licence Creative Commons Uveďte autora-Zachovejte licenci 3.0 Česko": "3-BY-SA-CZ",
-    "Licence Creative Commons Uveďte původ 4.0": "4-BY",
-    "Licence Creative Commons Uveďte původ-Neužívejte komerčně-Nezpracovávejte 4.0": "4-BY-NC-ND",
-    "Licence Creative Commons Uveďte původ-Neužívejte komerčně-Zachovejte licenci 4.0": "4-BY-NC-SA",
-    "Licence Creative Commons Uveďte původ-Zachovejte licenci 4.0": "4-BY-SA",
-    "LicenceCreativeCommonsUveďtepůvod-Nezpracovávejte4.0": "4-BY-ND",
-    "LicenceCreativeCommonsUveďtepůvod-Neužívejtekomerčně4.0": "4-BY-NC"
-}
-
-
-def parse_rights(text):
-    right = rights_dict.get(text)
-    if not right:
-        return None
-    return vocabulary_cache.by_id("rights", "id")[right]
 
 
 def transform_oai_identifier(md, entry):
@@ -819,176 +706,6 @@ def transform_502_date_defended(md, entry, value):
         md["dateIssued"] = date_defended
 
 
-class VocabularyCache:
-    def by_id(self, vocabulary_type, *fields):
-        if not fields:
-            fields = ["id"]
-        key = f"vocabulary-cache-{vocabulary_type}"
-        ret = current_cache.get(key)
-        if ret:
-            return ret
-
-        from invenio_vocabularies.proxies import current_service
-        from invenio_access.permissions import system_identity
-
-        try:
-            vocabulary_data = current_service.scan(
-                system_identity,
-                extra_filter=dsl.Q("term", type__id=vocabulary_type),
-            )
-        except sqlalchemy.exc.NoResultFound:
-            raise KeyError(f"Vocabulary '{vocabulary_type}' has not been found")
-        ret = {
-            x["id"]: {k: v for k, v in x.items() if k in fields}
-            for x in list(vocabulary_data)
-        }
-        log.info(
-            f"Caching {vocabulary_type} for {DEFAULT_VOCABULARY_CACHE_TTL} seconds"
-        )
-        current_cache.set(key, ret, timeout=DEFAULT_VOCABULARY_CACHE_TTL)
-        return ret
-
-    def get_institution(self, inst):
-        inst = (inst or "").strip()
-        if not inst:
-            return None
-        cache_key = f"institution-vocabulary-lookup-{inst}"
-        resolved = current_cache.get(cache_key)
-        if resolved:
-            return resolved
-
-        # Step 1: split the institution on dots or commas and generate query to institutions vocabulary
-        inst_pieces = re.split("([.,'])", inst)
-        # Step 2: get all candidates
-        candidate_strings = []
-        for start in range(0, len(inst_pieces)):
-            if inst_pieces[start] in (".", ",", "", "'"):
-                continue
-            for end in range(start, len(inst_pieces)):
-                if inst_pieces[end] in (".", ",", "", "'"):
-                    continue
-                candidate_strings.append("".join(inst_pieces[start : end + 1]).strip())
-        if not candidate_strings:
-            raise KeyError(
-                f"Can not transform institution name {inst} - no letters found"
-            )
-        # Step 3: use service to find candidates
-        q = " OR ".join(
-            f'hierarchy.title.cs: "{lucene_escape(x)}"^2 OR nonpreferredLabels.cs: "{lucene_escape(x)}"'
-            for x in candidate_strings
-        )
-        from invenio_vocabularies.proxies import current_service
-        from invenio_access.permissions import system_identity
-
-        resp = current_service.search(
-            system_identity, type="institutions", params={"q": q}
-        )
-        candidates = {r["id"]: r for r in list(resp)}
-        if not candidates:
-            return None
-        # get all ancestors
-        missing = set()
-        for c in candidates.values():
-            for anc in c["hierarchy"]["ancestors"]:
-                if anc not in candidates:
-                    missing.add(anc)
-        with_ancestors = {**candidates}
-        if missing:
-            resp = current_service.read_many(
-                system_identity, type="institutions", ids=list(missing)
-            )
-            for r in list(resp):
-                with_ancestors[r["id"]] = r
-
-        scored_candidates = [
-            (
-                self._get_institution_score(inst, c, with_ancestors),
-                c,
-            )
-            for c in candidates.values()
-        ]
-        scored_candidates.sort(key=lambda x: -x[0])
-        ret = None
-        if scored_candidates[0][0] > 0.8:
-            ret = {"id": scored_candidates[0][1]["id"]}
-
-        current_cache.set(cache_key, ret, timeout=DEFAULT_VOCABULARY_CACHE_TTL)
-        return ret
-
-    def by_ico(self, ico):
-        from invenio_vocabularies.proxies import current_service
-        from invenio_access.permissions import system_identity
-
-        q = f'props.ICO:"{ico}"'
-        resp = current_service.search(
-            system_identity, type="institutions", params={"q": q}
-        )
-        return "Organizational" if len(list(resp)) > 0 else None
-
-    def _get_institution_score(self, inst_string, candidate, ancestors):
-        def powerset(iterable):
-            s = list(iterable)
-            return list(
-                itertools.chain.from_iterable(
-                    itertools.combinations(s, r) for r in range(len(s) + 1)
-                )
-            )
-
-        ancestor_combinations = powerset(candidate["hierarchy"]["ancestors"])
-        best_score = -1
-        for c in ancestor_combinations:
-            score = self._get_institution_score_ids(
-                inst_string, ancestors, [candidate["id"], *c]
-            )
-            if score > best_score:
-                best_score = score
-        return best_score
-
-    def _get_institution_score_ids(self, inst_string, ancestors, ids):
-        inst_parts = set(x.lower() for x in re.split(r"\W", inst_string) if x)
-        matches = []
-        for c_id in ids:
-            c = ancestors[c_id]
-            c_matches = []
-            title_parts = set(
-                x.lower()
-                for x in re.split(r"\W", c["title"].get("cs") or c["title"].get("en"))
-                if x
-            )
-            c_matches.append(self._match_strings(inst_parts, title_parts))
-            for np in c.get("nonpreferredLabels", []):
-                if "cs" in np:
-                    np_parts = set(x.lower() for x in re.split(r"\W", np["cs"]) if x)
-                    c_matches.append(self._match_strings(inst_parts, np_parts))
-            c_matches.sort(key=lambda x: (-x[0], len(x[2])))
-            matches.append(c_matches[0])
-        alternative_parts = set()
-        for m in matches:
-            alternative_parts.update(m[2])
-        score1, _, _ = self._match_strings(inst_parts, alternative_parts)
-        score2, _, _ = self._match_strings(alternative_parts, inst_parts)
-        return min(score1, score2)
-
-    def _match_strings(self, tested_parts, alternative_parts):
-        if not tested_parts or not alternative_parts:
-            return -1, set(), set()
-
-        distances = []
-        matched_tested = set()
-        for tested_part in tested_parts:
-            dist = 0
-            match = None
-            for alternative_part in alternative_parts:
-                test_dist = Levenshtein.jaro_winkler(tested_part, alternative_part)
-                if test_dist > 0.9 and test_dist > dist:
-                    dist = test_dist
-                    match = alternative_part
-            if match:
-                matched_tested.add(tested_part)
-            distances.append(dist)
-        return sum(distances) / len(distances), matched_tested, alternative_parts
-
-
 lucene_escape_chars = {
     "+",
     "-",
@@ -1024,9 +741,6 @@ def convert_to_date(value):
         value = value[:-1]
     value = value.replace(" 00:00:00.0", "")
     return value.strip()
-
-
-vocabulary_cache = VocabularyCache()
 
 
 def resolve_name_type(value, ico=None):
@@ -1076,7 +790,7 @@ def _process_person_info(
         if any("ror" in idf for idf in identifiers):
             name_type = "Organizational"
         authority_identifiers = [
-            _create_identifier_object(*_parse_identifier(idf))
+            _create_identifier_object(*parse_identifier(idf))
             for idf in identifiers
             if idf
         ]
@@ -1105,7 +819,7 @@ def _create_person_dict(
     }
 
     if name_type == "Personal":
-        given_name, family_name = _parse_personal_name(name)
+        given_name, family_name = parse_personal_name(name)
         person_dict.update({
             "givenName": given_name,
             "familyName": family_name
@@ -1115,20 +829,6 @@ def _create_person_dict(
             person_dict["affiliations"] = affiliations
 
     return person_dict
-
-def _parse_identifier(identifier: str) -> Tuple[str, str]:
-    if "ScopusID" in identifier:
-        return "scopusID", identifier.split(": ")[1]
-    elif "ResearcherID" in identifier:
-        return "researcherID", identifier.split(": ")[1]
-    elif "orcid" in identifier:
-        return "orcid", identifier
-    elif "ICO" in identifier:
-        return "ICO", identifier.split(": ")[1]
-    elif "ror" in identifier:
-        return "ROR", identifier
-    else:
-        raise ValueError(f"Undefined scheme for the identifier: {identifier}")
 
 def _create_identifier_object(scheme: str, identifier: str) -> Dict[str, str]:
     return {
@@ -1171,12 +871,6 @@ def _process_affiliations(affiliations: List[str]) -> List[Dict[str, str]]:
 
     return vocabulary_affiliations
 
-def _parse_personal_name(name: str) -> Tuple[str, str]:
-    names = name.split(",")
-    family_name = names[0].strip()
-    given_name = "".join(names[1:]).strip(",").strip()
-    return given_name, family_name
-
 def _transform_title(md, entry, titleType, val):
     if val is None:
         return
@@ -1187,7 +881,7 @@ def _transform_title(md, entry, titleType, val):
             lang_entry = list(filter(lambda x: x is not None, lang_entry))
             lang_entry = None if not lang_entry else lang_entry[0]
 
-        lang = get_alpha2_lang(lang_entry)
+        lang = _get_alpha2_lang(lang_entry)
         md.setdefault("additionalTitles", []).append(
             {"title": {"lang": lang, "value": val}, "titleType": titleType}
         )
@@ -1199,3 +893,11 @@ def _transform_title(md, entry, titleType, val):
                 "titleType": titleType,
             }
         )
+        
+def _get_alpha2_lang(lang):
+    py_lang = pycountry.languages.get(alpha_3=lang) or pycountry.languages.get(
+        bibliographic=lang
+    )
+    if not py_lang:
+        raise LookupError()
+    return py_lang.alpha_2
