@@ -711,10 +711,8 @@ rights_dict = {
     # 'Text je chráněný podle autorského zákona č. 121/2000 Sb.': 'copyright', # vyhozeno, protoze uz neni ve slovniku
     "Licence Creative Commons Uveďte autora 3.0 Česko": "3-BY-CZ",
     "Licence Creative Commons Uveďte autora-Neužívejte dílo komerčně 3.0 Česko": "3-BY-NC-CZ",
-    "Licence Creative Commons Uveďte autora-Neužívejte dílo komerčně-Nezasahujte do díla 3.0 "
-    "Česko": "3-BY-NC-ND-CZ",
-    "Licence Creative Commons Uveďte autora-Neužívejte dílo komerčně-Zachovejte licenci 3.0 "
-    "Česko": "3-BY-NC-SA-CZ",
+    "Licence Creative Commons Uveďte autora-Neužívejte dílo komerčně-Nezasahujte do díla 3.0 Česko": "3-BY-NC-ND-CZ",
+    "Licence Creative Commons Uveďte autora-Neužívejte dílo komerčně-Zachovejte licenci 3.0 Česko": "3-BY-NC-SA-CZ",
     "Licence Creative Commons Uveďte autora-Nezasahujte do díla 3.0 Česko": "3-BY-ND-CZ",
     "Licence Creative Commons Uveďte autora-Zachovejte licenci 3.0 Česko": "3-BY-SA-CZ",
     "Licence Creative Commons Uveďte původ 4.0": "4-BY",
