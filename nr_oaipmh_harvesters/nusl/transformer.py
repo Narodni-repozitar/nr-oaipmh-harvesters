@@ -606,76 +606,16 @@ def transform_999C1_funding_reference(md, entry, val):
         from invenio_vocabularies.proxies import current_service
         from invenio_access.permissions import system_identity
 
-        def has_close_substring(shorter, longer, max_distance=1):
-            """Check if any substring of longer (of length equal to shorter) has Levenshtein distance <= max_distance from shorter"""
-            shorter_len = len(shorter)
-            for i in range(len(longer) - shorter_len + 1):
-                substring = longer[i:i + shorter_len]
-                if Levenshtein.distance(shorter, substring) <= max_distance:
-                    return True
-            return False
-
         try:
+            project_id_filter = dsl.Q("term", **{ "number": project_id })
             resp = current_service.search(
-                system_identity, 
-                type="funders", 
-                params={"q": "", "size": 1000}
+                system_identity,
+                type="awards", 
+                extra_filter=project_id_filter
             )
-            all_funders = list(resp)
-            
-            found_funder = None
-            search_funder = funder.lower()
-            for f in all_funders:
-                if funder == f.get('id'):
-                    found_funder = f
-                    break
-                
-                for lang, title in f.get('title', {}).items():
-                    title_lower = title.lower()
-                    # check both directions - is title in search_funder or vice versa
-                    if len(title_lower) <= len(search_funder):
-                        if has_close_substring(title_lower, search_funder):
-                            found_funder = f
-                            break
-                    else:
-                        if has_close_substring(search_funder, title_lower):
-                            found_funder = f
-                            break
-                            
-                if found_funder:
-                    break
-                    
-                acronym = f.get('props', {}).get('acronym', '').lower()
-                if acronym:
-                    if len(acronym) <= len(search_funder):
-                        if has_close_substring(acronym, search_funder):
-                            found_funder = f
-                            break
-                    else:
-                        if has_close_substring(search_funder, acronym):
-                            found_funder = f
-                            break
-                
-                for label in f.get('nonpreferredLabels', []):
-                    for lang, text in label.items():
-                        text_lower = text.lower()
-                        if len(text_lower) <= len(search_funder):
-                            if has_close_substring(text_lower, search_funder):
-                                found_funder = f
-                                break
-                        else:
-                            if has_close_substring(search_funder, text_lower):
-                                found_funder = f
-                                break
-                    if found_funder:
-                        break
-            
-            if not found_funder:
-                raise KeyError(f"Funder: '{funder}' has not been found")
-
-            matched_funder = found_funder
+            matched_funder = list(resp)[0]["funder"]
         except Exception as e:
-            raise KeyError(f"Funder: '{funder}' has not been found") from e
+            raise KeyError(f"Funder: '{funder}' with a project ID: '{project_id}' has not been found") from e
 
         md.setdefault("fundingReferences", []).append(
             make_dict("projectID", project_id, "funder", matched_funder)
