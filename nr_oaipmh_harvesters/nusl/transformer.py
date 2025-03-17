@@ -707,8 +707,6 @@ def transform_540_rights(md, entry, value):
 
 
 rights_dict = {
-    # 'Dílo je chráněno podle autorského zákona č. 121/2000 Sb.': 'copyright', # vyhozeno, protoze uz neni ve slovniku
-    # 'Text je chráněný podle autorského zákona č. 121/2000 Sb.': 'copyright', # vyhozeno, protoze uz neni ve slovniku
     "Licence Creative Commons Uveďte autora 3.0 Česko": "3-BY-CZ",
     "Licence Creative Commons Uveďte autora-Neužívejte dílo komerčně 3.0 Česko": "3-BY-NC-CZ",
     "Licence Creative Commons Uveďte autora-Neužívejte dílo komerčně-Nezasahujte do díla 3.0 Česko": "3-BY-NC-ND-CZ",
@@ -720,7 +718,18 @@ rights_dict = {
     "Licence Creative Commons Uveďte původ-Neužívejte komerčně-Zachovejte licenci 4.0": "4-BY-NC-SA",
     "Licence Creative Commons Uveďte původ-Zachovejte licenci 4.0": "4-BY-SA",
     "Licence Creative Commons Uveďte původ-Nezpracovávejte 4.0": "4-BY-ND",
-    "Licence Creative Commons Uveďte původ-Neužívejte komerčně 4.0": "4-BY-NC"
+    "Licence Creative Commons Uveďte původ-Neužívejte komerčně 4.0": "4-BY-NC",
+    "License: Creative Commons Attribution 4.0": "4-BY",
+    "License: Creative Commons Attribution-NoDerivs 3.0 Czech Republic": "3-BY-ND-CZ",
+    "License: Creative Commons Attribution-NoDerivs 4.0": "4-BY-ND",
+    "License: Creative Commons Attribution-NonCommercial 3.0 Czech Republic": "3-BY-NC-CZ",
+    "License: Creative Commons Attribution-NonCommercial 4.0": "4-BY-NC",
+    "License: Creative Commons Attribution-NonCommercial-NoDerivs 3.0 Czech Republic": "3-BY-NC-ND-CZ",
+    "License: Creative Commons Attribution-NonCommercial-NoDerivs 4.0": "4-BY-NC-ND",
+    "License: Creative Commons Attribution-NonCommercial-ShareAlike 3.0 Czech Republic": "3-BY-NC-SA-CZ",
+    "License: Creative Commons Attribution-NonCommercial-ShareAlike 4.0": "4-BY-NC-SA",
+    "License: Creative Commons Attribution-ShareAlike 3.0 Czech Republic": "3-BY-SA-CZ",
+    "License: Creative Commons Attribution-ShareAlike 4.0": "4-BY-SA"
 }
 
 
