@@ -719,8 +719,8 @@ rights_dict = {
     "Licence Creative Commons Uveďte původ-Neužívejte komerčně-Nezpracovávejte 4.0": "4-BY-NC-ND",
     "Licence Creative Commons Uveďte původ-Neužívejte komerčně-Zachovejte licenci 4.0": "4-BY-NC-SA",
     "Licence Creative Commons Uveďte původ-Zachovejte licenci 4.0": "4-BY-SA",
-    "LicenceCreativeCommonsUveďtepůvod-Nezpracovávejte4.0": "4-BY-ND",
-    "LicenceCreativeCommonsUveďtepůvod-Neužívejtekomerčně4.0": "4-BY-NC"
+    "Licence Creative Commons Uveďte původ-Nezpracovávejte 4.0": "4-BY-ND",
+    "Licence Creative Commons Uveďte původ-Neužívejte komerčně 4.0": "4-BY-NC"
 }
 
 
