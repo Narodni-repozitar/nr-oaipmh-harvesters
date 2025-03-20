@@ -601,8 +601,8 @@ def transform_996_accessibility(md, entry, value):
 
 @matches("999C1a", "999C1b", paired=True)
 def transform_999C1_funding_reference(md, entry, val):
-    project_id, funder = val
-    if funder and project_id:
+    project_id, _ = val
+    if project_id:
         from invenio_vocabularies.proxies import current_service
         from invenio_access.permissions import system_identity
 
@@ -615,7 +615,7 @@ def transform_999C1_funding_reference(md, entry, val):
             )
             matched_funder = list(resp)[0]["funder"]
         except Exception as e:
-            raise KeyError(f"Funder: '{funder}' with a project ID: '{project_id}' has not been found") from e
+            raise KeyError(f"Project ID: '{project_id}' has not been found") from e
 
         md.setdefault("fundingReferences", []).append(
             make_dict("projectID", project_id, "funder", matched_funder)
