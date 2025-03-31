@@ -161,15 +161,24 @@ class NUSLTransformer(OAIRuleTransformer):
 
         return True
 
-@matches("8564_u", "8564_z", paired=True)
+@matches("8564_u", "8564_z", "8564_y", paired=True)
 def transform_856_attachments(md, entry, value):
-    link, _ = value
-    filename = link.split("/")[-1]
+    link, description, language_version = value
+    if filename is None:
+        raise ValueError("File link is not present")
     
     if ".gif" in filename:
         return
     
-    entry.files.append(StreamEntryFile({ "key": filename }, link))
+    filename = link.split("/")[-1]
+    
+    fileNote = ""
+    if description is not None:
+        fileNote = description
+    if language_version is not None:
+        fileNote += f" ({language_version})"
+    
+    entry.files.append(StreamEntryFile({ "key": filename, "fileNote": fileNote }, link))
     entry.transformed["files"]["enabled"] = True
 
 @matches("001")
