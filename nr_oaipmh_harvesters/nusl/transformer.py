@@ -1076,9 +1076,9 @@ def _parse_identifier(identifier: str) -> Tuple[str, str]:
     elif "orcid" in identifier:
         return "orcid", identifier
     elif "ICO" in identifier:
-        return "ICO", identifier.split(": ")[1]
+        return "ico", identifier.split(": ")[1]
     elif "ror" in identifier:
-        return "ROR", identifier
+        return "ror", identifier
     else:
         raise ValueError(f"Undefined scheme for the identifier: {identifier}")
 
@@ -1096,7 +1096,7 @@ def _process_affiliations(affiliations: List[str]) -> List[Dict[str, str]]:
         if "ror" in affiliation:
             escaped_url = lucene_escape(affiliation)
             return f'relatedURI.ROR:"{escaped_url}"'
-        elif "ICO" in affiliation:
+        elif "ico" in affiliation:
             return f'props.ICO:"{affiliation.split(": ")[-1]}"'
         else:
             escaped_name = lucene_escape(affiliation)
