@@ -642,13 +642,39 @@ def transform_999C1_funding_reference(md, entry, val):
                 type="awards", 
                 extra_filter=project_id_filter
             )
-            matched_funder = list(resp)[0]["funder"]
+            matched_award = list(resp)[0]
         except Exception as e:
             raise KeyError(f"Project ID: '{project_id}' has not been found") from e
+        
+        award = {}
+        for field_in_award_datatype in ["title", "number", "acronym", "program", "subjects", "organizations"]:
+            if field_in_award_datatype in matched_award:
+                award[field_in_award_datatype] = matched_award[field_in_award_datatype]
 
-        md.setdefault("fundingReferences", []).append(
-            make_dict("projectID", project_id, "funder", matched_funder)
+        resp = current_service.search(
+            system_identity,
+            type="funders"
         )
+        matched_funder = [funder for funder in resp if funder["id"] == matched_award["funder"]["id"]]
+        if not matched_funder:
+            raise KeyError(f"Funder id: '{matched_award["funder"]["id"]}' has not been found") from e
+        
+        matched_funder = matched_funder[0]
+        funder = {
+            "name": matched_funder["title"]["cs"]
+        }
+        if "relatedURI" in matched_funder:
+            funder["identifiers"] = []
+            for scheme, identifier in matched_funder["relatedURI"].items():
+                funder["identifiers"].append({
+                    "identifier": identifier,
+                    "scheme": scheme
+                })
+        
+        md.setdefault("funders", []).append({
+            "award": award,
+            "funder": funder
+        })
 
 @matches("04107a", "04107b")
 def transform_04107_language(md, entry, value):
