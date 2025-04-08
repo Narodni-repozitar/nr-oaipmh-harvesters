@@ -436,13 +436,20 @@ def transform_720_creator(md: Dict, entry: Dict, value: Tuple) -> None:
     name_type, authority_identifiers, processed_affiliations = _process_person_info(
         name, affiliations, identifiers
     )
-    person_dict = _create_person_dict(
-        name, name_type, authority_identifiers
-    )
     creator = {
         "affiliations": processed_affiliations,
-        "person_or_org": person_dict
+        "person_or_org": {
+            "name": name,
+            "type": name_type,
+            "identifiers": authority_identifiers
+        }
     }
+    if name_type == "personal":
+        given_name, family_name = _parse_personal_name(name)
+        creator["person_or_org"].update({
+            "given_name": given_name,
+            "family_name": family_name,
+        })
     
     md.setdefault("creators", []).append(creator)
 
@@ -467,14 +474,21 @@ def transform_720_contributor(md: Dict, entry: Dict, value: Tuple) -> None:
                 ]["id"]
                 break
 
-    person_dict = _create_person_dict(
-        name, name_type, authority_identifiers
-    )
     contributor = {
         "role": role_from_vocab,
         "affiliations": processed_affiliations,
-        "person_or_org": person_dict
+        "person_or_org": {
+            "name": name,
+            "type": name_type,
+            "identifiers": authority_identifiers
+        }
     }
+    if name_type == "personal":
+        given_name, family_name = _parse_personal_name(name)
+        contributor["person_or_org"].update({
+            "given_name": given_name,
+            "family_name": family_name,
+        })
 
     md.setdefault("contributors", []).append(contributor)
 
@@ -886,7 +900,7 @@ class VocabularyCache:
         resp = current_service.search(
             system_identity, type="institutions", params={"q": q}
         )
-        return "Organizational" if len(list(resp)) > 0 else None
+        return "organizational" if len(list(resp)) > 0 else None
 
     def _get_institution_score(self, inst_string, candidate, ancestors):
         def powerset(iterable):
@@ -1054,23 +1068,6 @@ def _process_person_info(
 
     return name_type, authority_identifiers, processed_affiliations
 
-def _create_person_dict(
-    name: str,
-    name_type: str,
-    authority_identifiers: List[Dict]
-) -> Dict:
-    """Create a base dictionary for a person (creator or contributor)."""
-    given_name, family_name = _parse_personal_name(name)
-    person_dict = {
-        "name": name,
-        "type": name_type,
-        "given_name": given_name,
-        "family_name": family_name,
-        "identifiers": authority_identifiers
-    }
-
-    return person_dict
-
 def _parse_identifier(identifier: str) -> Tuple[str, str]:
     if "ScopusID" in identifier:
         return "scopusID", identifier.split(": ")[1]
@@ -1120,7 +1117,12 @@ def _process_affiliations(affiliations: List[str]) -> List[Dict[str, str]]:
         )
 
         try:
-            vocabulary_affiliations.append(list(resp)[0])
+            result = list(resp)[0]
+            result = {
+                "id": result["id"],
+                "name": result["title"]["cs"]
+            }
+            vocabulary_affiliations.append(result)
         except IndexError:
             raise ValueError(f"Affiliation: '{affiliation}' not found in the institution vocabulary.")
 
