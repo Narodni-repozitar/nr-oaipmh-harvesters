@@ -436,10 +436,13 @@ def transform_720_creator(md: Dict, entry: Dict, value: Tuple) -> None:
     name_type, authority_identifiers, processed_affiliations = _process_person_info(
         name, affiliations, identifiers
     )
-
-    creator = _create_person_dict(
-        name, name_type, authority_identifiers, processed_affiliations
+    person_dict = _create_person_dict(
+        name, name_type, authority_identifiers
     )
+    creator = {
+        "affiliations": processed_affiliations,
+        "person_or_org": person_dict
+    }
     
     md.setdefault("creators", []).append(creator)
 
@@ -464,10 +467,14 @@ def transform_720_contributor(md: Dict, entry: Dict, value: Tuple) -> None:
                 ]["id"]
                 break
 
-    contributor = _create_person_dict(
-        name, name_type, authority_identifiers, processed_affiliations
+    person_dict = _create_person_dict(
+        name, name_type, authority_identifiers
     )
-    contributor["contributorType"] = role_from_vocab
+    contributor = {
+        "role": role_from_vocab,
+        "affiliations": processed_affiliations,
+        "person_or_org": person_dict
+    }
 
     md.setdefault("contributors", []).append(contributor)
 
@@ -1005,9 +1012,9 @@ def resolve_name_type(value, ico=None):
             return None
 
     if inst:
-        return "Organizational"
+        return "organizational"
 
-    return "Personal"
+    return "personal"
 
 def _process_person_info(
     name: str,
@@ -1050,25 +1057,17 @@ def _process_person_info(
 def _create_person_dict(
     name: str,
     name_type: str,
-    authority_identifiers: List[Dict],
-    affiliations: Optional[List[Dict]] = None
+    authority_identifiers: List[Dict]
 ) -> Dict:
     """Create a base dictionary for a person (creator or contributor)."""
+    given_name, family_name = _parse_personal_name(name)
     person_dict = {
-        "fullName": name,
-        "nameType": name_type,
-        "authorityIdentifiers": authority_identifiers
+        "name": name,
+        "type": name_type,
+        "given_name": given_name,
+        "family_name": family_name,
+        "identifiers": authority_identifiers
     }
-
-    if name_type == "Personal":
-        given_name, family_name = _parse_personal_name(name)
-        person_dict.update({
-            "givenName": given_name,
-            "familyName": family_name
-        })
-        
-        if affiliations:
-            person_dict["affiliations"] = affiliations
 
     return person_dict
 
