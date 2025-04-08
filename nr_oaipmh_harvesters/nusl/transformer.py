@@ -995,9 +995,9 @@ vocabulary_cache = VocabularyCache()
 def resolve_name_type(value, ico=None):
     """
     Based on the given value of creator or contributor, applies heuristic rules
-    to determine the `nameType`. When none of the rules applied, default is `Personal`.
+    to determine the `nameType`. When none of the rules applied, default is `personal`.
 
-    Returns either `Organizational` or `Personal`.
+    Returns either `organizational` or `personal`.
     """
     value = value.strip()
     try:
@@ -1030,14 +1030,14 @@ def _process_person_info(
     if affiliations:
         affiliations = [affiliations] if isinstance(affiliations, str) else [aff for aff in affiliations if aff]
         if any("ror" in aff for aff in affiliations):
-            name_type = "Personal"
+            name_type = "personal"
         processed_affiliations = _process_affiliations(affiliations)
 
     # Process identifiers
     if identifiers:
         identifiers = [identifiers] if isinstance(identifiers, str) else [idf for idf in identifiers if idf]
         if any("ror" in idf for idf in identifiers):
-            name_type = "Organizational"
+            name_type = "organizational"
         authority_identifiers = [
             _create_identifier_object(*_parse_identifier(idf))
             for idf in identifiers
