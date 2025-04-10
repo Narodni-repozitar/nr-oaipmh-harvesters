@@ -322,6 +322,9 @@ def transform_650_7_subject(md, entry, value):
 
 
 def transform_subject(md, value):
+    if all(not v for v in value):
+        return
+    
     purl = value[3] or ""
     val_url = (
         purl if purl.startswith("http://") or purl.startswith("https://") else None
