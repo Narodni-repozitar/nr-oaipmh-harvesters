@@ -652,7 +652,6 @@ def transform_999C1_funding_reference(md, entry, val):
         for field_in_award_datatype in ["title", "number", "acronym", "program", "subjects", "organizations"]:
             if field_in_award_datatype in matched_award:
                 award[field_in_award_datatype] = matched_award[field_in_award_datatype]
-        award["id"] = matched_award["id"]
         
         md.setdefault("funders", []).append({
             "award": award,
