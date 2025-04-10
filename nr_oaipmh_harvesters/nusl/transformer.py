@@ -636,11 +636,10 @@ def transform_999C1_funding_reference(md, entry, val):
         from invenio_access.permissions import system_identity
 
         try:
-            project_id_filter = dsl.Q("term", **{ "number": project_id })
             resp = current_service.search(
                 system_identity,
                 type="awards", 
-                extra_filter=project_id_filter
+                extra_filter=dsl.Q("term", number=project_id)
             )
             matched_award = list(resp)[0]
         except Exception as e:
@@ -650,30 +649,12 @@ def transform_999C1_funding_reference(md, entry, val):
         for field_in_award_datatype in ["title", "number", "acronym", "program", "subjects", "organizations"]:
             if field_in_award_datatype in matched_award:
                 award[field_in_award_datatype] = matched_award[field_in_award_datatype]
-
-        resp = current_service.search(
-            system_identity,
-            type="funders"
-        )
-        matched_funder = [funder for funder in resp if funder["id"] == matched_award["funder"]["id"]]
-        if not matched_funder:
-            raise KeyError(f"Funder id: '{matched_award["funder"]["id"]}' has not been found") from e
-        
-        matched_funder = matched_funder[0]
-        funder = {
-            "name": matched_funder["title"]["cs"]
-        }
-        if "relatedURI" in matched_funder:
-            funder["identifiers"] = []
-            for scheme, identifier in matched_funder["relatedURI"].items():
-                funder["identifiers"].append({
-                    "identifier": identifier,
-                    "scheme": scheme
-                })
         
         md.setdefault("funders", []).append({
             "award": award,
-            "funder": funder
+            "funder": {
+                "name": matched_award["funder"]["name"]
+            }
         })
 
 @matches("04107a", "04107b")
