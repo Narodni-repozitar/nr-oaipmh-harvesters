@@ -322,6 +322,9 @@ def transform_650_7_subject(md, entry, value):
 
 
 def transform_subject(md, value):
+    if all(not v for v in value):
+        return
+    
     purl = value[3] or ""
     val_url = (
         purl if purl.startswith("http://") or purl.startswith("https://") else None
@@ -436,10 +439,20 @@ def transform_720_creator(md: Dict, entry: Dict, value: Tuple) -> None:
     name_type, authority_identifiers, processed_affiliations = _process_person_info(
         name, affiliations, identifiers
     )
-
-    creator = _create_person_dict(
-        name, name_type, authority_identifiers, processed_affiliations
-    )
+    creator = {
+        "affiliations": processed_affiliations,
+        "person_or_org": {
+            "name": name,
+            "type": name_type,
+            "identifiers": authority_identifiers
+        }
+    }
+    if name_type == "personal":
+        given_name, family_name = _parse_personal_name(name)
+        creator["person_or_org"].update({
+            "given_name": given_name,
+            "family_name": family_name,
+        })
     
     md.setdefault("creators", []).append(creator)
 
@@ -464,10 +477,21 @@ def transform_720_contributor(md: Dict, entry: Dict, value: Tuple) -> None:
                 ]["id"]
                 break
 
-    contributor = _create_person_dict(
-        name, name_type, authority_identifiers, processed_affiliations
-    )
-    contributor["contributorType"] = role_from_vocab
+    contributor = {
+        "role": role_from_vocab,
+        "affiliations": processed_affiliations,
+        "person_or_org": {
+            "name": name,
+            "type": name_type,
+            "identifiers": authority_identifiers
+        }
+    }
+    if name_type == "personal":
+        given_name, family_name = _parse_personal_name(name)
+        contributor["person_or_org"].update({
+            "given_name": given_name,
+            "family_name": family_name,
+        })
 
     md.setdefault("contributors", []).append(contributor)
 
@@ -615,19 +639,26 @@ def transform_999C1_funding_reference(md, entry, val):
         from invenio_access.permissions import system_identity
 
         try:
-            project_id_filter = dsl.Q("term", **{ "number": project_id })
             resp = current_service.search(
                 system_identity,
                 type="awards", 
-                extra_filter=project_id_filter
+                extra_filter=dsl.Q("term", number=project_id)
             )
-            matched_funder = list(resp)[0]["funder"]
+            matched_award = list(resp)[0]
         except Exception as e:
             raise KeyError(f"Project ID: '{project_id}' has not been found") from e
-
-        md.setdefault("fundingReferences", []).append(
-            make_dict("projectID", project_id, "funder", matched_funder)
-        )
+        
+        award = {}
+        for field_in_award_datatype in ["title", "number", "acronym", "program", "subjects", "organizations"]:
+            if field_in_award_datatype in matched_award:
+                award[field_in_award_datatype] = matched_award[field_in_award_datatype]
+        
+        md.setdefault("funders", []).append({
+            "award": award,
+            "funder": {
+                "name": matched_award["funder"]["name"]
+            }
+        })
 
 @matches("04107a", "04107b")
 def transform_04107_language(md, entry, value):
@@ -879,7 +910,7 @@ class VocabularyCache:
         resp = current_service.search(
             system_identity, type="institutions", params={"q": q}
         )
-        return "Organizational" if len(list(resp)) > 0 else None
+        return "organizational" if len(list(resp)) > 0 else None
 
     def _get_institution_score(self, inst_string, candidate, ancestors):
         def powerset(iterable):
@@ -988,9 +1019,9 @@ vocabulary_cache = VocabularyCache()
 def resolve_name_type(value, ico=None):
     """
     Based on the given value of creator or contributor, applies heuristic rules
-    to determine the `nameType`. When none of the rules applied, default is `Personal`.
+    to determine the `nameType`. When none of the rules applied, default is `personal`.
 
-    Returns either `Organizational` or `Personal`.
+    Returns either `organizational` or `personal`.
     """
     value = value.strip()
     try:
@@ -1005,9 +1036,9 @@ def resolve_name_type(value, ico=None):
             return None
 
     if inst:
-        return "Organizational"
+        return "organizational"
 
-    return "Personal"
+    return "personal"
 
 def _process_person_info(
     name: str,
@@ -1023,14 +1054,14 @@ def _process_person_info(
     if affiliations:
         affiliations = [affiliations] if isinstance(affiliations, str) else [aff for aff in affiliations if aff]
         if any("ror" in aff for aff in affiliations):
-            name_type = "Personal"
+            name_type = "personal"
         processed_affiliations = _process_affiliations(affiliations)
 
     # Process identifiers
     if identifiers:
         identifiers = [identifiers] if isinstance(identifiers, str) else [idf for idf in identifiers if idf]
         if any("ror" in idf for idf in identifiers):
-            name_type = "Organizational"
+            name_type = "organizational"
         authority_identifiers = [
             _create_identifier_object(*_parse_identifier(idf))
             for idf in identifiers
@@ -1047,31 +1078,6 @@ def _process_person_info(
 
     return name_type, authority_identifiers, processed_affiliations
 
-def _create_person_dict(
-    name: str,
-    name_type: str,
-    authority_identifiers: List[Dict],
-    affiliations: Optional[List[Dict]] = None
-) -> Dict:
-    """Create a base dictionary for a person (creator or contributor)."""
-    person_dict = {
-        "fullName": name,
-        "nameType": name_type,
-        "authorityIdentifiers": authority_identifiers
-    }
-
-    if name_type == "Personal":
-        given_name, family_name = _parse_personal_name(name)
-        person_dict.update({
-            "givenName": given_name,
-            "familyName": family_name
-        })
-        
-        if affiliations:
-            person_dict["affiliations"] = affiliations
-
-    return person_dict
-
 def _parse_identifier(identifier: str) -> Tuple[str, str]:
     if "ScopusID" in identifier:
         return "scopusID", identifier.split(": ")[1]
@@ -1080,9 +1086,9 @@ def _parse_identifier(identifier: str) -> Tuple[str, str]:
     elif "orcid" in identifier:
         return "orcid", identifier
     elif "ICO" in identifier:
-        return "ICO", identifier.split(": ")[1]
+        return "ico", identifier.split(": ")[1]
     elif "ror" in identifier:
-        return "ROR", identifier
+        return "ror", identifier
     else:
         raise ValueError(f"Undefined scheme for the identifier: {identifier}")
 
@@ -1121,7 +1127,20 @@ def _process_affiliations(affiliations: List[str]) -> List[Dict[str, str]]:
         )
 
         try:
-            vocabulary_affiliations.append(list(resp)[0])
+            result = list(resp)[0]
+            title = None
+            if "cs" in result["title"]:
+                title = result["title"]["cs"]
+            else:
+                title = list(result["title"].values())[0]
+            if not title:
+                raise ValueError(f"Affiliation: '{affiliation}' does not have a valid title.")
+            
+            result = {
+                "id": result["id"],
+                "name": title
+            }
+            vocabulary_affiliations.append(result)
         except IndexError:
             raise ValueError(f"Affiliation: '{affiliation}' not found in the institution vocabulary.")
 
