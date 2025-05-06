@@ -1248,9 +1248,9 @@ def _process_person_info(
 
 def _parse_identifier(identifier: str) -> Tuple[str, str]:
     if "ScopusID" in identifier:
-        return "scopusID", identifier.split(": ")[1]
+        return "scopusId", identifier.split(": ")[1]
     elif "ResearcherID" in identifier:
-        return "researcherID", identifier.split(": ")[1]
+        return "researcherId", identifier.split(": ")[1]
     elif "orcid" in identifier:
         return "orcid", identifier
     elif "ICO" in identifier:
