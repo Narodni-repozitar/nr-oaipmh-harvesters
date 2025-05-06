@@ -1221,14 +1221,14 @@ def _process_person_info(
     # Process affiliations
     if affiliations:
         affiliations = [affiliations] if isinstance(affiliations, str) else [aff for aff in affiliations if aff]
-        if any("ror" in aff for aff in affiliations):
+        if any("ror" in aff.lower() for aff in affiliations):
             name_type = "personal"
         processed_affiliations = _process_affiliations(affiliations)
 
     # Process identifiers
     if identifiers:
         identifiers = [identifiers] if isinstance(identifiers, str) else [idf for idf in identifiers if idf]
-        if any("ror" in idf for idf in identifiers):
+        if any("ror" in idf.lower() for idf in identifiers):
             name_type = "organizational"
         authority_identifiers = [
             _create_identifier_object(*_parse_identifier(idf))
@@ -1238,7 +1238,7 @@ def _process_person_info(
 
     # Determine name type if not already set
     if not name_type:
-        ico_idf = [idf for idf in identifiers if "ICO" in idf] if identifiers else []
+        ico_idf = [idf for idf in identifiers if "ico" in idf.lower()] if identifiers else []
         if ico_idf:
             name_type = resolve_name_type(name, ico_idf[0].split(": ")[1])
         else:
@@ -1247,15 +1247,16 @@ def _process_person_info(
     return name_type, authority_identifiers, processed_affiliations
 
 def _parse_identifier(identifier: str) -> Tuple[str, str]:
-    if "ScopusID" in identifier:
-        return "scopusID", identifier.split(": ")[1]
-    elif "ResearcherID" in identifier:
-        return "researcherID", identifier.split(": ")[1]
-    elif "orcid" in identifier:
+    normalized_identifier = identifier.lower()
+    if "scopusid" in normalized_identifier:
+        return "scopusId", identifier.split(": ")[1]
+    elif "researcherid" in normalized_identifier:
+        return "researcherId", identifier.split(": ")[1]
+    elif "orcid" in normalized_identifier:
         return "orcid", identifier
-    elif "ICO" in identifier:
+    elif "ico" in normalized_identifier:
         return "ico", identifier.split(": ")[1]
-    elif "ror" in identifier:
+    elif "ror" in normalized_identifier:
         return "ror", identifier
     else:
         raise ValueError(f"Undefined scheme for the identifier: {identifier}")
@@ -1271,10 +1272,10 @@ def _process_affiliations(affiliations: List[str]) -> List[Dict[str, str]]:
     from invenio_access.permissions import system_identity
 
     def _prepare_affiliation_query(affiliation: str):
-        if "ror" in affiliation:
+        if "ror" in affiliation.lower():
             escaped_url = lucene_escape(affiliation)
             return f'relatedURI.ROR:"{escaped_url}"'
-        elif "ICO" in affiliation:
+        elif "ico" in affiliation.lower():
             return f'props.ICO:"{affiliation.split(": ")[-1]}"'
         else:
             escaped_name = lucene_escape(affiliation)
