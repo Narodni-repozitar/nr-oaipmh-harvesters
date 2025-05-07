@@ -538,16 +538,14 @@ def parse_issn(value, identifiers):
 
 def parse_isbn(value, identifiers):
    for isbn in re.split("[,;]", value):
-       isbn = (isbn.strip()
-                  .lower()
-                  .replace("(cz)", "")
-                  .replace("(en)", "")
-                  .strip("()")
-                  .removeprefix("isbn:")
-                  .removeprefix("isbn")
-                  .strip())
-       if isbn and isbn != "n":
-           identifiers.append(_create_identifier_object("ISBN", isbn))
+        isbn = isbn.strip()
+        isbn = isbn.lower()
+        isbn = re.sub(r'\s*\([^)]*\)', '', isbn)
+        isbn = isbn.removeprefix("isbn:").removeprefix("isbn")
+        isbn = isbn.strip()
+        
+        if isbn and isbn != "n":
+            identifiers.append(_create_identifier_object("ISBN", isbn))
 
 
 @matches("85640u", "85640z", paired=True)
