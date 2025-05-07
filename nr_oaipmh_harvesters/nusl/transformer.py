@@ -161,15 +161,23 @@ class NUSLTransformer(OAIRuleTransformer):
 
         return True
 
-@matches("8564_u", "8564_z", paired=True)
+@matches("8564_u", "8564_z", "8564_y", paired=True)
 def transform_856_attachments(md, entry, value):
-    link, _ = value
+    link, description, language_version = value
     filename = link.split("/")[-1]
+    if filename is None:
+        raise ValueError("File link is not present")
     
     if ".gif" in filename:
         return
     
-    entry.files.append(StreamEntryFile({ "key": filename }, link))
+    file_note = ""
+    if description is not None:
+        file_note = description
+    if language_version is not None:
+        file_note += f" ({language_version})"
+    
+    entry.files.append(StreamEntryFile({ "key": filename, "fileNote": file_note }, link))
     entry.transformed["files"]["enabled"] = True
 
 @matches("001")
@@ -314,6 +322,9 @@ def transform_650_7_subject(md, entry, value):
 
 
 def transform_subject(md, value):
+    if all(not v for v in value):
+        return
+    
     purl = value[3] or ""
     val_url = (
         purl if purl.startswith("http://") or purl.startswith("https://") else None
@@ -428,10 +439,20 @@ def transform_720_creator(md: Dict, entry: Dict, value: Tuple) -> None:
     name_type, authority_identifiers, processed_affiliations = _process_person_info(
         name, affiliations, identifiers
     )
-
-    creator = _create_person_dict(
-        name, name_type, authority_identifiers, processed_affiliations
-    )
+    creator = {
+        "affiliations": processed_affiliations,
+        "person_or_org": {
+            "name": name,
+            "type": name_type,
+            "identifiers": authority_identifiers
+        }
+    }
+    if name_type == "personal":
+        given_name, family_name = _parse_personal_name(name)
+        creator["person_or_org"].update({
+            "given_name": given_name,
+            "family_name": family_name,
+        })
     
     md.setdefault("creators", []).append(creator)
 
@@ -456,10 +477,21 @@ def transform_720_contributor(md: Dict, entry: Dict, value: Tuple) -> None:
                 ]["id"]
                 break
 
-    contributor = _create_person_dict(
-        name, name_type, authority_identifiers, processed_affiliations
-    )
-    contributor["contributorType"] = role_from_vocab
+    contributor = {
+        "role": role_from_vocab,
+        "affiliations": processed_affiliations,
+        "person_or_org": {
+            "name": name,
+            "type": name_type,
+            "identifiers": authority_identifiers
+        }
+    }
+    if name_type == "personal":
+        given_name, family_name = _parse_personal_name(name)
+        contributor["person_or_org"].update({
+            "given_name": given_name,
+            "family_name": family_name,
+        })
 
     md.setdefault("contributors", []).append(contributor)
 
@@ -599,85 +631,32 @@ def transform_996_accessibility(md, entry, value):
 
 @matches("999C1a", "999C1b", paired=True)
 def transform_999C1_funding_reference(md, entry, val):
-    project_id, funder = val
-    if funder and project_id:
+    project_id, _ = val
+    if project_id:
         from invenio_vocabularies.proxies import current_service
         from invenio_access.permissions import system_identity
 
-        def has_close_substring(shorter, longer, max_distance=1):
-            """Check if any substring of longer (of length equal to shorter) has Levenshtein distance <= max_distance from shorter"""
-            shorter_len = len(shorter)
-            for i in range(len(longer) - shorter_len + 1):
-                substring = longer[i:i + shorter_len]
-                if Levenshtein.distance(shorter, substring) <= max_distance:
-                    return True
-            return False
-
         try:
             resp = current_service.search(
-                system_identity, 
-                type="funders", 
-                params={"q": "", "size": 1000}
+                system_identity,
+                type="awards", 
+                extra_filter=dsl.Q("term", number=project_id)
             )
-            all_funders = list(resp)
-            
-            found_funder = None
-            search_funder = funder.lower()
-            for f in all_funders:
-                if funder == f.get('id'):
-                    found_funder = f
-                    break
-                
-                for lang, title in f.get('title', {}).items():
-                    title_lower = title.lower()
-                    # check both directions - is title in search_funder or vice versa
-                    if len(title_lower) <= len(search_funder):
-                        if has_close_substring(title_lower, search_funder):
-                            found_funder = f
-                            break
-                    else:
-                        if has_close_substring(search_funder, title_lower):
-                            found_funder = f
-                            break
-                            
-                if found_funder:
-                    break
-                    
-                acronym = f.get('props', {}).get('acronym', '').lower()
-                if acronym:
-                    if len(acronym) <= len(search_funder):
-                        if has_close_substring(acronym, search_funder):
-                            found_funder = f
-                            break
-                    else:
-                        if has_close_substring(search_funder, acronym):
-                            found_funder = f
-                            break
-                
-                for label in f.get('nonpreferredLabels', []):
-                    for lang, text in label.items():
-                        text_lower = text.lower()
-                        if len(text_lower) <= len(search_funder):
-                            if has_close_substring(text_lower, search_funder):
-                                found_funder = f
-                                break
-                        else:
-                            if has_close_substring(search_funder, text_lower):
-                                found_funder = f
-                                break
-                    if found_funder:
-                        break
-            
-            if not found_funder:
-                raise KeyError(f"Funder: '{funder}' has not been found")
-
-            matched_funder = found_funder
+            matched_award = list(resp)[0]
         except Exception as e:
-            raise KeyError(f"Funder: '{funder}' has not been found") from e
-
-        md.setdefault("fundingReferences", []).append(
-            make_dict("projectID", project_id, "funder", matched_funder)
-        )
+            raise KeyError(f"Project ID: '{project_id}' has not been found") from e
+        
+        award = {}
+        for field_in_award_datatype in ["title", "number", "acronym", "program", "subjects", "organizations"]:
+            if field_in_award_datatype in matched_award:
+                award[field_in_award_datatype] = matched_award[field_in_award_datatype]
+        
+        md.setdefault("funders", []).append({
+            "award": award,
+            "funder": {
+                "name": matched_award["funder"]["name"]
+            }
+        })
 
 @matches("04107a", "04107b")
 def transform_04107_language(md, entry, value):
@@ -716,7 +695,7 @@ rights_dict = {
     "Licence Creative Commons Uveďte původ-Neužívejte komerčně-Zachovejte licenci 4.0": "4-BY-NC-SA",
     "Licence Creative Commons Uveďte původ-Zachovejte licenci 4.0": "4-BY-SA",
     "Licence Creative Commons Uveďte původ-Nezpracovávejte 4.0": "4-BY-ND",
-    "Licence Creative Commons Uveďte původ-Neužívejte komerčně4.0": "4-BY-NC",
+    "Licence Creative Commons Uveďte původ-Neužívejte komerčně 4.0": "4-BY-NC",
     "License: Creative Commons Attribution 4.0": "4-BY",
     "License: Creative Commons Attribution-NoDerivs 3.0 Czech Republic": "3-BY-ND-CZ",
     "License: Creative Commons Attribution-NoDerivs 4.0": "4-BY-ND",
@@ -727,7 +706,7 @@ rights_dict = {
     "License: Creative Commons Attribution-NonCommercial-ShareAlike 3.0 Czech Republic": "3-BY-NC-SA-CZ",
     "License: Creative Commons Attribution-NonCommercial-ShareAlike 4.0": "4-BY-NC-SA",
     "License: Creative Commons Attribution-ShareAlike 3.0 Czech Republic": "3-BY-SA-CZ",
-    "License: Creative Commons Attribution-ShareAlike 4.0":	"4-BY-SA"
+    "License: Creative Commons Attribution-ShareAlike 4.0": "4-BY-SA"
 }
 
 
@@ -793,9 +772,174 @@ def transform_998_collection(md, entry, value):
     from invenio_communities.proxies import current_communities
     from invenio_access.permissions import system_identity
 
-    # Note:
-    # Keys are legacy NUSL ids that are no longer used, values are their new values.
-    # Because there are still records with legacy NUSL ids, this mapping is needed.
+    nusl_id_to_slug_mapping = {
+        "agritec": "7emz",
+        "agrotest_fyto": "22g4",
+        "agrovyzkum_rapotin": "zqh5",
+        "akademie_muzickych_umeni_v_praze": "8gve",
+        "akademie_vytvarnych_umeni": "nvcb",
+        "archeologicky_ustav_brno": "tq0x",
+        "archeologicky_ustav_praha": "fy00",
+        "archip": "52fb",
+        "archiv_doc_jiri_soucek": "qvhz",
+        "archiv_ing_arch_jana_moucky": "4j8v",
+        "arnika": "y0dw",
+        "astronomicky_ustav": "vy9t",
+        "biofyzikalni_ustav": "zpci",
+        "biologicke_centrum": "n0xu",
+        "biotechnologicky_ustav": "2qd9",
+        "botanicky_ustav": "91ek",
+        "cenia": "zn3n",
+        "centrum_dopravniho_vyzkumu": "x6b0",
+        "centrum_pro_dopravu_a_energetiku": "xmfn",
+        "centrum_pro_regionalni_rozvoj": "3f7b",
+        "centrum_pro_studium_vysokeho_skolstvi": "vvwy",
+        "centrum_vyzkumu_globalni_zmeny": "j47p",
+        "ceska_asociace_ergoterapeutu": "whmr",
+        "ceska_asociace_paraplegiku": "exqr",
+        "ceska_narodni_banka": "bnyi",
+        "ceska_spolecnost_ornitologicka": "iq4i",
+        "ceska_zemedelska_univerzita": "1tt2",
+        "cesky_statisticky_urad": "badt",
+        "cesnet": "ykbr",
+        "clovek_v_tisni": "izxu",
+        "crdm": "utzb",
+        "cvut": "y9bq",
+        "czwa": "cjyn",
+        "ekodomov": "uh4x",
+        "entomologicky_ustav": "zfpq",
+        "etnologicky_ustav": "4jef",
+        "evropske_hodnoty": "n2rk",
+        "fairtrade_cz_sk": "zeea",
+        "filosoficky_ustav": "720e",
+        "fyzikalni_ustav": "yd66",
+        "fyziologicky_ustav": "nrpj",
+        "galerie_vytvarneho_umeni_v_ostrave": "t0nj",
+        "gender_studies": "3fmh",
+        "geofyzikalni_ustav": "z1e8",
+        "geologicky_ustav": "50at",
+        "gle": "6amm",
+        "hestia": "azxq",
+        "historicky_ustav": "y7gg",
+        "hydrobiologicky_ustav": "v6jj",
+        "chmelarsky_institut": "xrh6",
+        "institut_umeni": "j9x8",
+        "iuridicum_remedium": "ki0x",
+        "jihoceska_univerzita_v_ceskych_budejovicich": "q6tw",
+        "jihomoravske_muzeum_ve_znojme": "wk7f",
+        "knihovna_av_cr": "mp7c",
+        "masarykova_univerzita": "cujt",
+        "masarykuv_ustav_a_archiv": "ku9r",
+        "matematicky_ustav": "w6ed",
+        "mendelova_univerzita_v_brne": "q46u",
+        "mikrobiologicky_ustav": "egdf",
+        "ministerstvo_spravedlnosti": "x7j7",
+        "moravska_galerie": "z1em",
+        "moravska_zemska_knihovna": "nm8z",
+        "muzeum_brnenska": "21gf",
+        "muzeum_skla_a_bizuterie": "9zy2",
+        "muzeum_vychodnich_cech": "0zuv",
+        "nacr": "w8y4",
+        "nadace_promeny": "gj2a",
+        "narodni_hrebcin_kladruby": "rtgy",
+        "narodni_informacni_a_poradenske_stredisko_pro_kulturu": "ge7e",
+        "narodni_knihovna": "vz34",
+        "narodni_lekarska_knihovna": "a0hr",
+        "narodni_muzeum": "19pv",
+        "narodni_muzeum_v_prirode": "2nk4",
+        "narodni_pamatkovy_ustav": "87p8",
+        "narodni_technicka_knihovna": "fcq7",
+        "narodni_technicke_muzeum": "7x0e",
+        "narodni_zemedelske_muzeum": "2ixq",
+        "narodohospodarsky_ustav": "99xq",
+        "nfa": "gr8c",
+        "nulk": "v0rv",
+        "nuv": "wbhz",
+        "orientalni_ustav": "r68a",
+        "oseva": "5vxr",
+        "ostravska_univerzita": "j61g",
+        "pamatnik_narodniho_pisemnictvi": "4dz4",
+        "parazitologicky_ustav": "4x3a",
+        "parlamentni_institut": "mxan",
+        "psychologicky_ustav": "umjz",
+        "sdruzeni_pro_integraci_a_migraci": "d0y5",
+        "severoceske_muzeum_v_liberci": "0d9d",
+        "siriri": "xzdm",
+        "slezska_univerzita_opava": "ymfu",
+        "slezske_zemske_muzeum": "2a8j",
+        "slovansky_ustav": "58f6",
+        "centrum_pro_vyzkum_verejneho_mineni": "5pv8",
+        "sociologicky_ustav": "5pv8",
+        "surao": "5k78",
+        "szpi": "azir",
+        "technicke_muzeum_v_brne": "ugvw",
+        "technologicke_centrum": "bb83",
+        "uhk": "p80y",
+        "ujep": "verw",
+        "umeleckoprumyslove_museum": "ujww",
+        "univerzita_karlova_v_praze": "8g23",
+        "upce": "9f6r",
+        "upol": "jivv",
+        "urad_prumysloveho_vlastnictvi": "5wmr",
+        "ustav_analyticke_chemie": "np2e",
+        "ustav_anorganicke_chemie": "xaqc",
+        "ustav_archeologicke_pamatkove_pece_severozapadnich_cech": "085p",
+        "ustav_biologie_obratlovcu": "7a4m",
+        "ustav_dejin_umeni": "3xe6",
+        "ustav_experimentalni_botaniky": "ai17",
+        "farmakologicky_ustav": "9pth",
+        "ustav_experimentalni_mediciny": "9pth",
+        "ustav_fotoniky_a_elektroniky": "dv07",
+        "ustav_fyzikalni_chemie_j_heyrovskeho": "d6ab",
+        "ustav_fyziky_atmosfery": "k7ki",
+        "ustav_fyziky_materialu": "rj0h",
+        "ustav_fyziky_plazmatu": "0kgr",
+        "ustav_geoniky": "iftu",
+        "ustav_chemickych_procesu": "2prw",
+        "ustav_informatiky": "zfcp",
+        "ustav_jaderne_fyziky": "pmyj",
+        "ustav_makromolekularni_chemie": "4qfm",
+        "ustav_molekularni_biologie_rostlin": "k4yf",
+        "ustav_molekularni_genetiky": "12ey",
+        "ustav_organicke_chemie_a_biochemie": "9rjk",
+        "ustav_pristrojove_techniky": "g9t1",
+        "ustav_pro_ceskou_literaturu": "5qqp",
+        "ustav_pro_hydrodynamiku": "1t68",
+        "ustav_pro_jazyk_cesky": "218m",
+        "ustav_pro_soudobe_dejiny": "d6nj",
+        "ustav_pro_studium_totalitnich_rezimu": "wwac",
+        "ustav_pudni_biologie": "u7ee",
+        "ustav_statu_a_prava": "4g9q",
+        "ustav_struktury_a_mechaniky_hornin": "rzv2",
+        "ustav_teoreticke_a_aplikovane_mechaniky": "yqr9",
+        "ustav_teorie_informace_a_automatizace": "ygir",
+        "ustav_fyzikalniho_inzenyrstvi": "e2dx",
+        "ustav_pro_elektrotechniku": "e2dx",
+        "ustav_termomechaniky": "e2dx",
+        "ustav_zivocisne_fyziologie_a_genetiky": "m8yc",
+        "vscht": "whdy",
+        "vugtk": "8rg6",
+        "vyzkumny_ustav_potravinarsky": "wvya",
+        "vutbr": "5j61",
+        "vuv_tgm": "t373",
+        "vvud": "ieex",
+        "vysoka_skola_ekonomicka_v_praze": "wzkj",
+        "vysoka_skola_evropskych_a_regionalnich_studii": "ata0",
+        "vysoka_skola_financni_a_spravni": "r3w4",
+        "vyzkumny_ustav_bezpecnosti_prace": "km8v",
+        "vyzkumny_ustav_lesniho_hospodarstvi_a_myslivosti": "i7tm",
+        "vyzkumny_ustav_prace_a_socialnich_veci": "2f9n",
+        "vyzkumny_ustav_rostlinne_vyroby": "xnkt",
+        "vyzkumny_ustav_silva_taroucy": "4eqq",
+        "woodexpert": "0w0h",
+        "zapadoceska_univerzita": "6f0m",
+        "zapadoceske_muzeum_v_plzni": "efbe",
+        # "": "uxbx",
+        # "": "ben8",
+        # "": "xjez",
+        # "": "12d3"
+    }
+
     legacy_nusl_id_mapping_to_slug = {
         "centrum_pro_vyzkum_verejneho_mineni": "sociologicky-ustav",
         "katedra_socialni_geografie_prf": "univerzita-karlova-v-praze",
@@ -804,7 +948,10 @@ def transform_998_collection(md, entry, value):
         "ustav_fyzikalniho_inzenyrstvi": "ustav-termomechaniky",
         "ustav_pro_elektrotechniku": "ustav-termomechaniky"
     }
-    nusl_id = legacy_nusl_id_mapping_to_slug.get(value, value)
+    if value not in nusl_id_to_slug_mapping:
+        raise ValueError(f"{value} is not a valid slug for any community.")
+    nusl_id = nusl_id_to_slug_mapping[value]
+    nusl_id = legacy_nusl_id_mapping_to_slug.get(nusl_id, nusl_id)
     slug = nusl_id.replace("_", "-")
 
     slug_filter = dsl.Q("term", **{ "slug": slug })
@@ -929,7 +1076,7 @@ class VocabularyCache:
         resp = current_service.search(
             system_identity, type="institutions", params={"q": q}
         )
-        return "Organizational" if len(list(resp)) > 0 else None
+        return "organizational" if len(list(resp)) > 0 else None
 
     def _get_institution_score(self, inst_string, candidate, ancestors):
         def powerset(iterable):
@@ -1038,9 +1185,9 @@ vocabulary_cache = VocabularyCache()
 def resolve_name_type(value, ico=None):
     """
     Based on the given value of creator or contributor, applies heuristic rules
-    to determine the `nameType`. When none of the rules applied, default is `Personal`.
+    to determine the `nameType`. When none of the rules applied, default is `personal`.
 
-    Returns either `Organizational` or `Personal`.
+    Returns either `organizational` or `personal`.
     """
     value = value.strip()
     try:
@@ -1055,9 +1202,9 @@ def resolve_name_type(value, ico=None):
             return None
 
     if inst:
-        return "Organizational"
+        return "organizational"
 
-    return "Personal"
+    return "personal"
 
 def _process_person_info(
     name: str,
@@ -1072,15 +1219,15 @@ def _process_person_info(
     # Process affiliations
     if affiliations:
         affiliations = [affiliations] if isinstance(affiliations, str) else [aff for aff in affiliations if aff]
-        if any("ror" in aff for aff in affiliations):
-            name_type = "Personal"
+        if any("ror" in aff.lower() for aff in affiliations):
+            name_type = "personal"
         processed_affiliations = _process_affiliations(affiliations)
 
     # Process identifiers
     if identifiers:
         identifiers = [identifiers] if isinstance(identifiers, str) else [idf for idf in identifiers if idf]
-        if any("ror" in idf for idf in identifiers):
-            name_type = "Organizational"
+        if any("ror" in idf.lower() for idf in identifiers):
+            name_type = "organizational"
         authority_identifiers = [
             _create_identifier_object(*_parse_identifier(idf))
             for idf in identifiers
@@ -1089,7 +1236,7 @@ def _process_person_info(
 
     # Determine name type if not already set
     if not name_type:
-        ico_idf = [idf for idf in identifiers if "ICO" in idf] if identifiers else []
+        ico_idf = [idf for idf in identifiers if "ico" in idf.lower()] if identifiers else []
         if ico_idf:
             name_type = resolve_name_type(name, ico_idf[0].split(": ")[1])
         else:
@@ -1097,42 +1244,18 @@ def _process_person_info(
 
     return name_type, authority_identifiers, processed_affiliations
 
-def _create_person_dict(
-    name: str,
-    name_type: str,
-    authority_identifiers: List[Dict],
-    affiliations: Optional[List[Dict]] = None
-) -> Dict:
-    """Create a base dictionary for a person (creator or contributor)."""
-    person_dict = {
-        "fullName": name,
-        "nameType": name_type,
-        "authorityIdentifiers": authority_identifiers
-    }
-
-    if name_type == "Personal":
-        given_name, family_name = _parse_personal_name(name)
-        person_dict.update({
-            "givenName": given_name,
-            "familyName": family_name
-        })
-        
-        if affiliations:
-            person_dict["affiliations"] = affiliations
-
-    return person_dict
-
 def _parse_identifier(identifier: str) -> Tuple[str, str]:
-    if "ScopusID" in identifier:
-        return "scopusID", identifier.split(": ")[1]
-    elif "ResearcherID" in identifier:
-        return "researcherID", identifier.split(": ")[1]
-    elif "orcid" in identifier:
+    normalized_identifier = identifier.lower()
+    if "scopusid" in normalized_identifier:
+        return "scopusId", identifier.split(": ")[1]
+    elif "researcherid" in normalized_identifier:
+        return "researcherId", identifier.split(": ")[1]
+    elif "orcid" in normalized_identifier:
         return "orcid", identifier
-    elif "ICO" in identifier:
-        return "ICO", identifier.split(": ")[1]
-    elif "ror" in identifier:
-        return "ROR", identifier
+    elif "ico" in normalized_identifier:
+        return "ico", identifier.split(": ")[1]
+    elif "ror" in normalized_identifier:
+        return "ror", identifier
     else:
         raise ValueError(f"Undefined scheme for the identifier: {identifier}")
 
@@ -1147,10 +1270,10 @@ def _process_affiliations(affiliations: List[str]) -> List[Dict[str, str]]:
     from invenio_access.permissions import system_identity
 
     def _prepare_affiliation_query(affiliation: str):
-        if "ror" in affiliation:
+        if "ror" in affiliation.lower():
             escaped_url = lucene_escape(affiliation)
             return f'relatedURI.ROR:"{escaped_url}"'
-        elif "ICO" in affiliation:
+        elif "ico" in affiliation.lower():
             return f'props.ICO:"{affiliation.split(": ")[-1]}"'
         else:
             escaped_name = lucene_escape(affiliation)
@@ -1171,7 +1294,20 @@ def _process_affiliations(affiliations: List[str]) -> List[Dict[str, str]]:
         )
 
         try:
-            vocabulary_affiliations.append(list(resp)[0])
+            result = list(resp)[0]
+            title = None
+            if "cs" in result["title"]:
+                title = result["title"]["cs"]
+            else:
+                title = list(result["title"].values())[0]
+            if not title:
+                raise ValueError(f"Affiliation: '{affiliation}' does not have a valid title.")
+            
+            result = {
+                "id": result["id"],
+                "name": title
+            }
+            vocabulary_affiliations.append(result)
         except IndexError:
             raise ValueError(f"Affiliation: '{affiliation}' not found in the institution vocabulary.")
 
