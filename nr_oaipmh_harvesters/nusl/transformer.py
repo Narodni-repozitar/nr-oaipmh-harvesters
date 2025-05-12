@@ -649,13 +649,14 @@ def transform_999C1_funding_reference(md, entry, val):
             raise KeyError(f"Project ID: '{project_id}' has not been found") from e
         
         award = {}
-        for field_in_award_datatype in ["title", "number", "acronym", "program", "subjects", "organizations"]:
+        for field_in_award_datatype in ["id", "title", "number", "acronym", "program", "subjects", "organizations"]:
             if field_in_award_datatype in matched_award:
                 award[field_in_award_datatype] = matched_award[field_in_award_datatype]
         
         md.setdefault("funders", []).append({
             "award": award,
             "funder": {
+                "id": matched_award["funder"]["id"],
                 "name": matched_award["funder"]["name"]
             }
         })
