@@ -177,7 +177,7 @@ def transform_856_attachments(md, entry, value):
     if language_version is not None:
         file_note += f" ({language_version})"
     
-    entry.files.append(StreamEntryFile({ "key": filename, "fileNote": file_note }, link))
+    entry.files.append(StreamEntryFile({ "key": filename, "metadata": { "metadata": { "file_note": file_note } }}, link))
     entry.transformed["files"]["enabled"] = True
 
 @matches("001")
