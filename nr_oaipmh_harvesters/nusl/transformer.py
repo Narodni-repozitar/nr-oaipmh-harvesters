@@ -1277,13 +1277,12 @@ def _process_affiliations(affiliations: List[str]) -> List[Dict[str, str]]:
         elif "ico" in affiliation.lower():
             return f'props.ICO:"{affiliation.split(": ")[-1]}"'
         else:
+            languages_in_institutions = ["cs", "en", "hu", "de", "fr", "la", "tr", "sk", "zh", "pl"]
             escaped_name = lucene_escape(affiliation)
             candidates = [
                 "props.acronym",
-                "title.en",
-                "title.cs",
-                "nonpreferredLabels.cs",
-                "nonpreferredLabels.en"
+                *[f"title.{lang}" for lang in languages_in_institutions],
+                *[f"nonpreferredLabels.{lang}" for lang in languages_in_institutions],
             ]
             return " OR ".join([f'{candidate}:"{escaped_name}"' for candidate in candidates])
 
