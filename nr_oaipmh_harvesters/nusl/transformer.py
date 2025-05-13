@@ -538,16 +538,14 @@ def parse_issn(value, identifiers):
 
 def parse_isbn(value, identifiers):
    for isbn in re.split("[,;]", value):
-       isbn = (isbn.strip()
-                  .lower()
-                  .replace("(cz)", "")
-                  .replace("(en)", "")
-                  .strip("()")
-                  .removeprefix("isbn:")
-                  .removeprefix("isbn")
-                  .strip())
-       if isbn and isbn != "n":
-           identifiers.append(_create_identifier_object("ISBN", isbn))
+        isbn = isbn.strip()
+        isbn = isbn.lower()
+        isbn = re.sub(r'\s*\([^)]*\)', '', isbn)
+        isbn = isbn.removeprefix("isbn:").removeprefix("isbn")
+        isbn = isbn.strip()
+        
+        if isbn and isbn != "n":
+            identifiers.append(_create_identifier_object("ISBN", isbn))
 
 
 @matches("85640u", "85640z", paired=True)
@@ -728,32 +726,32 @@ def transform_oai_identifier(md, entry):
 
 @matches("502__c")
 def transform_502_degree_grantor(md, entry, value):
-    institution = vocabulary_cache.get_institution(value)
-    if institution:
-        md.setdefault("thesis", {}).setdefault("degreeGrantors", []).append(institution)
+    degree_grantor = vocabulary_cache.get_institution(value, vocab_type="degree-grantors")
+    if degree_grantor:
+        md.setdefault("thesis", {}).setdefault("degreeGrantors", []).append(degree_grantor)
 
 
 @matches("7102_a", "7102_b", "7102_g", "7102_9", paired=True)
 def transform_7102_degree_grantor(md, entry, value):
     if value[3] != "cze":
         return
-    institution = []
+    degree_grantor = []
     if value[0]:
-        institution.append(value[0])
+        degree_grantor.append(value[0])
     if value[1]:
         if value[1].startswith("Program "):
             md.setdefault("thesis", {}).setdefault("studyFields", []).extend(
                 value[1][len("Program ") :]
             )
         else:
-            institution.append(value[1])
+            degree_grantor.append(value[1])
     if value[2]:
-        institution.append(value[2])
-    if institution:
-        institution = vocabulary_cache.get_institution(", ".join(institution))
-        if institution:
+        degree_grantor.append(value[2])
+    if degree_grantor:
+        degree_grantor = vocabulary_cache.get_institution(", ".join(degree_grantor), vocab_type="degree-grantors")
+        if degree_grantor:
             md.setdefault("thesis", {}).setdefault("degreeGrantors", []).append(
-                institution
+                degree_grantor
             )
 
 
@@ -1004,11 +1002,11 @@ class VocabularyCache:
         current_cache.set(key, ret, timeout=DEFAULT_VOCABULARY_CACHE_TTL)
         return ret
 
-    def get_institution(self, inst):
+    def get_institution(self, inst, vocab_type="institutions"):
         inst = (inst or "").strip()
         if not inst:
             return None
-        cache_key = f"institution-vocabulary-lookup-{inst}"
+        cache_key = f"{vocab_type}-vocabulary-lookup-{inst}"
         resolved = current_cache.get(cache_key)
         if resolved:
             return resolved
@@ -1037,7 +1035,7 @@ class VocabularyCache:
         from invenio_access.permissions import system_identity
 
         resp = current_service.search(
-            system_identity, type="institutions", params={"q": q}
+            system_identity, type=vocab_type, params={"q": q}
         )
         candidates = {r["id"]: r for r in list(resp)}
         if not candidates:
@@ -1051,7 +1049,7 @@ class VocabularyCache:
         with_ancestors = {**candidates}
         if missing:
             resp = current_service.read_many(
-                system_identity, type="institutions", ids=list(missing)
+                system_identity, type=vocab_type, ids=list(missing)
             )
             for r in list(resp):
                 with_ancestors[r["id"]] = r
