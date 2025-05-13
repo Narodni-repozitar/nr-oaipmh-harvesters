@@ -177,7 +177,7 @@ def transform_856_attachments(md, entry, value):
     if language_version is not None:
         file_note += f" ({language_version})"
     
-    entry.files.append(StreamEntryFile({ "key": filename, "fileNote": file_note }, link))
+    entry.files.append(StreamEntryFile({ "key": filename, "metadata": { "metadata": { "file_note": file_note } }}, link))
     entry.transformed["files"]["enabled"] = True
 
 @matches("001")
@@ -647,13 +647,14 @@ def transform_999C1_funding_reference(md, entry, val):
             raise KeyError(f"Project ID: '{project_id}' has not been found") from e
         
         award = {}
-        for field_in_award_datatype in ["title", "number", "acronym", "program", "subjects", "organizations"]:
+        for field_in_award_datatype in ["id", "title", "number", "acronym", "program", "subjects", "organizations"]:
             if field_in_award_datatype in matched_award:
                 award[field_in_award_datatype] = matched_award[field_in_award_datatype]
         
         md.setdefault("funders", []).append({
             "award": award,
             "funder": {
+                "id": matched_award["funder"]["id"],
                 "name": matched_award["funder"]["name"]
             }
         })
