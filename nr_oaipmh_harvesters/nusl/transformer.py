@@ -929,33 +929,18 @@ def transform_998_collection(md, entry, value):
         "vysoka_skola_financni_a_spravni": "r3w4",
         "vyzkumny_ustav_bezpecnosti_prace": "km8v",
         "vyzkumny_ustav_lesniho_hospodarstvi_a_myslivosti": "i7tm",
-        "vyzkumny_ustav_prace_a_socialnich_veci": "2f9n",
+        "vyzkumny_ustav_prace_a_socialnich_veci": "km8v",
         "vyzkumny_ustav_rostlinne_vyroby": "xnkt",
         "vyzkumny_ustav_silva_taroucy": "4eqq",
         "woodexpert": "0w0h",
         "zapadoceska_univerzita": "6f0m",
-        "zapadoceske_muzeum_v_plzni": "efbe",
-        # "": "uxbx",
-        # "": "ben8",
-        # "": "xjez",
-        # "": "12d3"
+        "zapadoceske_muzeum_v_plzni": "efbe"
     }
 
-    legacy_nusl_id_mapping_to_slug = {
-        "centrum_pro_vyzkum_verejneho_mineni": "sociologicky-ustav",
-        "katedra_socialni_geografie_prf": "univerzita-karlova-v-praze",
-        "ustav_pro_dejiny_umeni_ff_uk": "univerzita-karlova-v-praze",
-        "farmakologicky_ustav": "ustav-experimentalni-mediciny",
-        "ustav_fyzikalniho_inzenyrstvi": "ustav-termomechaniky",
-        "ustav_pro_elektrotechniku": "ustav-termomechaniky"
-    }
     if value not in nusl_id_to_slug_mapping:
         raise ValueError(f"{value} is not a valid slug for any community.")
-    nusl_id = nusl_id_to_slug_mapping[value]
-    nusl_id = legacy_nusl_id_mapping_to_slug.get(nusl_id, nusl_id)
-    slug = nusl_id.replace("_", "-")
 
-    slug_filter = dsl.Q("term", **{ "slug": slug })
+    slug_filter = dsl.Q("term", **{ "slug": nusl_id_to_slug_mapping[value] })
     results = current_communities.service.search(system_identity, extra_filter=slug_filter)
     if not results:
         raise ValueError(f"{value} is not a valid slug for any community.")
