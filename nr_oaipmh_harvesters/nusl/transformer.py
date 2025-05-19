@@ -436,13 +436,18 @@ def transform_720_creator(md: Dict, entry: Dict, value: Tuple) -> None:
         return
 
     name, affiliations, identifiers = value
-    name_type, authority_identifiers, processed_affiliations, vocab_name = _process_person_info(
+    name_type, authority_identifiers, processed_affiliations = _process_person_info(
         name, affiliations, identifiers
     )
+    
+    if name_type == "organizational":
+        ror = [idf for idf in identifiers if "ror" in idf]
+        name = _find_institution_name(name, None if not ror else ror[0])
+    
     creator = {
         "affiliations": processed_affiliations,
         "person_or_org": {
-            "name": vocab_name,
+            "name": name,
             "type": name_type,
             "identifiers": authority_identifiers
         }
@@ -462,7 +467,7 @@ def transform_720_contributor(md: Dict, entry: Dict, value: Tuple) -> None:
         return
 
     name, role, affiliations, identifiers = value
-    name_type, authority_identifiers, processed_affiliations, vocab_name = _process_person_info(
+    name_type, authority_identifiers, processed_affiliations = _process_person_info(
         name, affiliations, identifiers
     )
 
@@ -477,11 +482,15 @@ def transform_720_contributor(md: Dict, entry: Dict, value: Tuple) -> None:
                 ]["id"]
                 break
 
+    if name_type == "organizational":
+        ror = [idf for idf in identifiers if "ror" in idf]
+        name = _find_institution_name(name, None if not ror else ror[0])
+
     contributor = {
         "role": role_from_vocab,
         "affiliations": processed_affiliations,
         "person_or_org": {
-            "name": vocab_name,
+            "name": name,
             "type": name_type,
             "identifiers": authority_identifiers
         }
@@ -1201,59 +1210,23 @@ def _process_person_info(
     name_type = ""
     authority_identifiers = []
     processed_affiliations = []
-    vocab_name = None
 
-    # Process affiliations
     if affiliations:
         affiliations = [affiliations] if isinstance(affiliations, str) else [aff for aff in affiliations if aff]
         if any("ror" in aff.lower() for aff in affiliations):
             name_type = "personal"
         processed_affiliations = _process_affiliations(affiliations)
 
-    # Process identifiers
     if identifiers:
         identifiers = [identifiers] if isinstance(identifiers, str) else [idf for idf in identifiers if idf]
         if any("ror" in idf.lower() for idf in identifiers):
             name_type = "organizational"
-            
-            from invenio_vocabularies.proxies import current_service
-            from invenio_access.permissions import system_identity
-
-            ror = [idf for idf in identifiers if "ror" in idf][0]
-            ror_query_part = f"relatedURI.ROR:\"{ror}\""
-            
-            escaped_name = lucene_escape(name)
-            
-            candidates = [
-                "props.acronym",
-                *[f"title.{lang}" for lang in LANGUAGES_IN_INSTITUTIONS],
-                *[f"nonpreferredLabels.{lang}" for lang in LANGUAGES_IN_INSTITUTIONS],
-            ]
-            query_parts = [f'{candidate}:"{escaped_name}"' for candidate in candidates]
-            query = " OR ".join(query_parts)
-            query += " OR " + ror_query_part
-            resp = current_service.search(
-                system_identity, type="institutions", params={"q": query}
-            )
-            
-            try:
-                result = list(resp)[0]
-                if "cs" in result["title"]:
-                    vocab_name = result["title"]["cs"]
-                elif "en" in result["title"]:
-                    vocab_name = result["title"]["en"]
-                else:
-                    vocab_name = list(result["title"].values())[0]
-            except IndexError:
-                raise ValueError(f"Affiliation with ROR: '{ror}' and name: '{name}' not found in the institution vocabulary.")
-            
         authority_identifiers = [
             _create_identifier_object(*_parse_identifier(idf))
             for idf in identifiers
             if idf
         ]
 
-    # Determine name type if not already set
     if not name_type:
         ico_idf = [idf for idf in identifiers if "ico" in idf.lower()] if identifiers else []
         if ico_idf:
@@ -1261,10 +1234,7 @@ def _process_person_info(
         else:
             name_type = resolve_name_type(name)
 
-    if not vocab_name:
-        raise ValueError(f"Vocabulary name was not gathered for ROR: '{ror}' and name: '{name}'")
-
-    return name_type, authority_identifiers, processed_affiliations, vocab_name
+    return name_type, authority_identifiers, processed_affiliations
 
 def _parse_identifier(identifier: str) -> Tuple[str, str]:
     normalized_identifier = identifier.lower()
@@ -1361,5 +1331,36 @@ def _transform_title(md, entry, titleType, val):
                 "titleType": titleType,
             }
         )
+
+def _find_institution_name(name: str, ror: Optional[str]) -> str:
+    from invenio_vocabularies.proxies import current_service
+    from invenio_access.permissions import system_identity
+
+    escaped_name = lucene_escape(name)
+    
+    candidates = [
+        "props.acronym",
+        *[f"title.{lang}" for lang in LANGUAGES_IN_INSTITUTIONS],
+        *[f"nonpreferredLabels.{lang}" for lang in LANGUAGES_IN_INSTITUTIONS],
+    ]
+    query_parts = [f'{candidate}:"{escaped_name}"' for candidate in candidates]
+    query = " OR ".join(query_parts)
+    
+    if ror:
+        query += " OR relatedURI.ROR:\"{ror}\""
+    resp = current_service.search(
+        system_identity, type="institutions", params={"q": query}
+    )
+    
+    try:
+        result = list(resp)[0]
+        if "cs" in result["title"]:
+            return result["title"]["cs"]
+        elif "en" in result["title"]:
+            return result["title"]["en"]
+        else:
+            return list(result["title"].values())[0]
+    except IndexError:
+        raise ValueError(f"Affiliation with ROR: '{ror}' and name: '{name}' not found in the institution vocabulary.")
 
 LANGUAGES_IN_INSTITUTIONS = ["cs", "en", "hu", "de", "fr", "la", "tr", "sk", "zh", "pl"]
