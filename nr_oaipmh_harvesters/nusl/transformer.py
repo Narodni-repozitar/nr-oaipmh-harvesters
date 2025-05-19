@@ -439,6 +439,11 @@ def transform_720_creator(md: Dict, entry: Dict, value: Tuple) -> None:
     name_type, authority_identifiers, processed_affiliations = _process_person_info(
         name, affiliations, identifiers
     )
+    
+    if name_type == "organizational":
+        ror = [idf for idf in identifiers if "ror" in idf]
+        name = _find_institution_name(name, None if not ror else ror[0])
+    
     creator = {
         "affiliations": processed_affiliations,
         "person_or_org": {
@@ -476,6 +481,10 @@ def transform_720_contributor(md: Dict, entry: Dict, value: Tuple) -> None:
                     contributor_type["title"]["en"]
                 ]["id"]
                 break
+
+    if name_type == "organizational":
+        ror = [idf for idf in identifiers if "ror" in idf]
+        name = _find_institution_name(name, None if not ror else ror[0])
 
     contributor = {
         "role": role_from_vocab,
@@ -1202,14 +1211,12 @@ def _process_person_info(
     authority_identifiers = []
     processed_affiliations = []
 
-    # Process affiliations
     if affiliations:
         affiliations = [affiliations] if isinstance(affiliations, str) else [aff for aff in affiliations if aff]
         if any("ror" in aff.lower() for aff in affiliations):
             name_type = "personal"
         processed_affiliations = _process_affiliations(affiliations)
 
-    # Process identifiers
     if identifiers:
         identifiers = [identifiers] if isinstance(identifiers, str) else [idf for idf in identifiers if idf]
         if any("ror" in idf.lower() for idf in identifiers):
@@ -1220,7 +1227,6 @@ def _process_person_info(
             if idf
         ]
 
-    # Determine name type if not already set
     if not name_type:
         ico_idf = [idf for idf in identifiers if "ico" in idf.lower()] if identifiers else []
         if ico_idf:
@@ -1262,12 +1268,11 @@ def _process_affiliations(affiliations: List[str]) -> List[Dict[str, str]]:
         elif "ico" in affiliation.lower():
             return f'props.ICO:"{affiliation.split(": ")[-1]}"'
         else:
-            languages_in_institutions = ["cs", "en", "hu", "de", "fr", "la", "tr", "sk", "zh", "pl"]
             escaped_name = lucene_escape(affiliation)
             candidates = [
                 "props.acronym",
-                *[f"title.{lang}" for lang in languages_in_institutions],
-                *[f"nonpreferredLabels.{lang}" for lang in languages_in_institutions],
+                *[f"title.{lang}" for lang in LANGUAGES_IN_INSTITUTIONS],
+                *[f"nonpreferredLabels.{lang}" for lang in LANGUAGES_IN_INSTITUTIONS],
             ]
             return " OR ".join([f'{candidate}:"{escaped_name}"' for candidate in candidates])
 
@@ -1326,3 +1331,36 @@ def _transform_title(md, entry, titleType, val):
                 "titleType": titleType,
             }
         )
+
+def _find_institution_name(name: str, ror: Optional[str]) -> str:
+    from invenio_vocabularies.proxies import current_service
+    from invenio_access.permissions import system_identity
+
+    escaped_name = lucene_escape(name)
+    
+    candidates = [
+        "props.acronym",
+        *[f"title.{lang}" for lang in LANGUAGES_IN_INSTITUTIONS],
+        *[f"nonpreferredLabels.{lang}" for lang in LANGUAGES_IN_INSTITUTIONS],
+    ]
+    query_parts = [f'{candidate}:"{escaped_name}"' for candidate in candidates]
+    query = " OR ".join(query_parts)
+    
+    if ror:
+        query += " OR relatedURI.ROR:\"{ror}\""
+    resp = current_service.search(
+        system_identity, type="institutions", params={"q": query}
+    )
+    
+    try:
+        result = list(resp)[0]
+        if "cs" in result["title"]:
+            return result["title"]["cs"]
+        elif "en" in result["title"]:
+            return result["title"]["en"]
+        else:
+            return list(result["title"].values())[0]
+    except IndexError:
+        raise ValueError(f"Affiliation with ROR: '{ror}' and name: '{name}' not found in the institution vocabulary.")
+
+LANGUAGES_IN_INSTITUTIONS = ["cs", "en", "hu", "de", "fr", "la", "tr", "sk", "zh", "pl"]
