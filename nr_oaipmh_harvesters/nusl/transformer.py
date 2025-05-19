@@ -436,13 +436,13 @@ def transform_720_creator(md: Dict, entry: Dict, value: Tuple) -> None:
         return
 
     name, affiliations, identifiers = value
-    name_type, authority_identifiers, processed_affiliations = _process_person_info(
+    name_type, authority_identifiers, processed_affiliations, vocab_name = _process_person_info(
         name, affiliations, identifiers
     )
     creator = {
         "affiliations": processed_affiliations,
         "person_or_org": {
-            "name": name,
+            "name": vocab_name,
             "type": name_type,
             "identifiers": authority_identifiers
         }
@@ -462,7 +462,7 @@ def transform_720_contributor(md: Dict, entry: Dict, value: Tuple) -> None:
         return
 
     name, role, affiliations, identifiers = value
-    name_type, authority_identifiers, processed_affiliations = _process_person_info(
+    name_type, authority_identifiers, processed_affiliations, vocab_name = _process_person_info(
         name, affiliations, identifiers
     )
 
@@ -481,7 +481,7 @@ def transform_720_contributor(md: Dict, entry: Dict, value: Tuple) -> None:
         "role": role_from_vocab,
         "affiliations": processed_affiliations,
         "person_or_org": {
-            "name": name,
+            "name": vocab_name,
             "type": name_type,
             "identifiers": authority_identifiers
         }
@@ -1196,11 +1196,12 @@ def _process_person_info(
     name: str,
     affiliations: Optional[Union[str, List[str]]] = None,
     identifiers: Optional[Union[str, List[str]]] = None
-) -> Tuple[str, List[Dict], List[Dict]]:
+) -> Tuple[str, List[Dict], List[Dict], Optional[str]]:
     """Process common person information for both creators and contributors."""
     name_type = ""
     authority_identifiers = []
     processed_affiliations = []
+    vocab_name = None
 
     # Process affiliations
     if affiliations:
@@ -1214,6 +1215,38 @@ def _process_person_info(
         identifiers = [identifiers] if isinstance(identifiers, str) else [idf for idf in identifiers if idf]
         if any("ror" in idf.lower() for idf in identifiers):
             name_type = "organizational"
+            
+            from invenio_vocabularies.proxies import current_service
+            from invenio_access.permissions import system_identity
+
+            ror = [idf for idf in identifiers if "ror" in idf][0]
+            ror_query_part = f"relatedURI.ROR:\"{ror}\""
+            
+            escaped_name = lucene_escape(name)
+            
+            candidates = [
+                "props.acronym",
+                *[f"title.{lang}" for lang in LANGUAGES_IN_INSTITUTIONS],
+                *[f"nonpreferredLabels.{lang}" for lang in LANGUAGES_IN_INSTITUTIONS],
+            ]
+            query_parts = [f'{candidate}:"{escaped_name}"' for candidate in candidates]
+            query = " OR ".join(query_parts)
+            query += " OR " + ror_query_part
+            resp = current_service.search(
+                system_identity, type="institutions", params={"q": query}
+            )
+            
+            try:
+                result = list(resp)[0]
+                if "cs" in result["title"]:
+                    vocab_name = result["title"]["cs"]
+                elif "en" in result["title"]:
+                    vocab_name = result["title"]["en"]
+                else:
+                    vocab_name = list(result["title"].values())[0]
+            except IndexError:
+                raise ValueError(f"Affiliation with ROR: '{ror}' and name: '{name}' not found in the institution vocabulary.")
+            
         authority_identifiers = [
             _create_identifier_object(*_parse_identifier(idf))
             for idf in identifiers
@@ -1228,7 +1261,10 @@ def _process_person_info(
         else:
             name_type = resolve_name_type(name)
 
-    return name_type, authority_identifiers, processed_affiliations
+    if not vocab_name:
+        raise ValueError(f"Vocabulary name was not gathered for ROR: '{ror}' and name: '{name}'")
+
+    return name_type, authority_identifiers, processed_affiliations, vocab_name
 
 def _parse_identifier(identifier: str) -> Tuple[str, str]:
     normalized_identifier = identifier.lower()
@@ -1262,12 +1298,11 @@ def _process_affiliations(affiliations: List[str]) -> List[Dict[str, str]]:
         elif "ico" in affiliation.lower():
             return f'props.ICO:"{affiliation.split(": ")[-1]}"'
         else:
-            languages_in_institutions = ["cs", "en", "hu", "de", "fr", "la", "tr", "sk", "zh", "pl"]
             escaped_name = lucene_escape(affiliation)
             candidates = [
                 "props.acronym",
-                *[f"title.{lang}" for lang in languages_in_institutions],
-                *[f"nonpreferredLabels.{lang}" for lang in languages_in_institutions],
+                *[f"title.{lang}" for lang in LANGUAGES_IN_INSTITUTIONS],
+                *[f"nonpreferredLabels.{lang}" for lang in LANGUAGES_IN_INSTITUTIONS],
             ]
             return " OR ".join([f'{candidate}:"{escaped_name}"' for candidate in candidates])
 
@@ -1326,3 +1361,5 @@ def _transform_title(md, entry, titleType, val):
                 "titleType": titleType,
             }
         )
+
+LANGUAGES_IN_INSTITUTIONS = ["cs", "en", "hu", "de", "fr", "la", "tr", "sk", "zh", "pl"]
