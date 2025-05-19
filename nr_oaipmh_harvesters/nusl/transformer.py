@@ -430,7 +430,7 @@ def parse_place(place):
         res["country"] = {"id": country}
     return res
 
-@matches("720__a", "720__5", "720__6", paired=True, unique=True)
+@matches("720__a", "720__5", "720__6", paired=True, unique=True, group=True)
 def transform_720_creator(md: Dict, entry: Dict, value: Tuple) -> None:
     if not value[0] or value[0] == "et. al.":
         return
@@ -441,8 +441,10 @@ def transform_720_creator(md: Dict, entry: Dict, value: Tuple) -> None:
     )
     
     if name_type == "organizational":
-        ror = [idf for idf in identifiers if "ror" in idf]
+        ror = [] if not identifiers else [idf for idf in identifiers if "ror" in idf]
         name = _find_institution_name(name, None if not ror else ror[0])
+        if not name:
+            raise ValueError("Creator marked as organizational but the data were not found")
     
     creator = {
         "affiliations": processed_affiliations,
@@ -461,7 +463,7 @@ def transform_720_creator(md: Dict, entry: Dict, value: Tuple) -> None:
     
     md.setdefault("creators", []).append(creator)
 
-@matches("720__i", "720__e", "720__5", "720__6", paired=True, unique=True)
+@matches("720__i", "720__e", "720__5", "720__6", paired=True, unique=True, group=True)
 def transform_720_contributor(md: Dict, entry: Dict, value: Tuple) -> None:
     if not value[0]:
         return
@@ -483,8 +485,10 @@ def transform_720_contributor(md: Dict, entry: Dict, value: Tuple) -> None:
                 break
 
     if name_type == "organizational":
-        ror = [idf for idf in identifiers if "ror" in idf]
+        ror = [] if not identifiers else [idf for idf in identifiers if "ror" in idf]
         name = _find_institution_name(name, None if not ror else ror[0])
+        if not name:
+            raise ValueError("Creator marked as organizational but the data were not found")
 
     contributor = {
         "role": role_from_vocab,
@@ -1071,8 +1075,11 @@ class VocabularyCache:
         resp = current_service.search(
             system_identity, type="institutions", params={"q": q}
         )
-        return "organizational" if len(list(resp)) > 0 else None
-
+        try:
+            return "organizational" if len(list(resp)) > 0 else None
+        except IndexError:
+            return None
+    
     def _get_institution_score(self, inst_string, candidate, ancestors):
         def powerset(iterable):
             s = list(iterable)
@@ -1177,35 +1184,11 @@ def convert_to_date(value):
 vocabulary_cache = VocabularyCache()
 
 
-def resolve_name_type(value, ico=None):
-    """
-    Based on the given value of creator or contributor, applies heuristic rules
-    to determine the `nameType`. When none of the rules applied, default is `personal`.
-
-    Returns either `organizational` or `personal`.
-    """
-    value = value.strip()
-    try:
-        inst = vocabulary_cache.get_institution(value)
-    except KeyError:
-        return None
-
-    if ico:
-        try:
-            inst = vocabulary_cache.by_ico(ico)
-        except KeyError:
-            return None
-
-    if inst:
-        return "organizational"
-
-    return "personal"
-
 def _process_person_info(
     name: str,
     affiliations: Optional[Union[str, List[str]]] = None,
     identifiers: Optional[Union[str, List[str]]] = None
-) -> Tuple[str, List[Dict], List[Dict]]:
+) -> Tuple[str, List[Dict], List[Dict], Optional[str]]:
     """Process common person information for both creators and contributors."""
     name_type = ""
     authority_identifiers = []
@@ -1230,10 +1213,21 @@ def _process_person_info(
     if not name_type:
         ico_idf = [idf for idf in identifiers if "ico" in idf.lower()] if identifiers else []
         if ico_idf:
-            name_type = resolve_name_type(name, ico_idf[0].split(": ")[1])
+            inst = vocabulary_cache.by_ico(ico_idf)
+            if inst:
+                name_type = "organizational"
+            else:
+                raise ValueError(f"Missing institution with ICO: {ico_idf}")
         else:
-            name_type = resolve_name_type(name)
-
+            inst = _find_institution_name(name)
+            if inst:
+                name_type = "organizational"
+            else:
+                if _is_in_names(name):
+                    name_type = "personal"
+                else:
+                    raise ValueError(f"'{name}' cannot be classified as 'personal' or 'organizational'")
+                    
     return name_type, authority_identifiers, processed_affiliations
 
 def _parse_identifier(identifier: str) -> Tuple[str, str]:
@@ -1332,7 +1326,7 @@ def _transform_title(md, entry, titleType, val):
             }
         )
 
-def _find_institution_name(name: str, ror: Optional[str]) -> str:
+def _find_institution_name(name: str, ror: Optional[str] = None) -> str:
     from invenio_vocabularies.proxies import current_service
     from invenio_access.permissions import system_identity
 
@@ -1352,15 +1346,31 @@ def _find_institution_name(name: str, ror: Optional[str]) -> str:
         system_identity, type="institutions", params={"q": query}
     )
     
-    try:
-        result = list(resp)[0]
-        if "cs" in result["title"]:
-            return result["title"]["cs"]
-        elif "en" in result["title"]:
-            return result["title"]["en"]
-        else:
-            return list(result["title"].values())[0]
-    except IndexError:
-        raise ValueError(f"Affiliation with ROR: '{ror}' and name: '{name}' not found in the institution vocabulary.")
+    results = list(resp)
+    if len(results) == 0:
+        return ""
+    
+    result = results[0]
+    if "cs" in result["title"]:
+        return result["title"]["cs"]
+    elif "en" in result["title"]:
+        return result["title"]["en"]
+    else:
+        return list(result["title"].values())[0]
+    
+def _is_in_names(name: str) -> bool:
+    """
+    Check whether the given name is present in the RDM names vocabulary.
+    """
+    from invenio_vocabularies.proxies import current_service
+    from invenio_access.permissions import system_identity
 
+    escaped_name = lucene_escape(name)
+    
+    resp = current_service.search(
+        system_identity, type="names", params={"q": {"name": escaped_name}}
+    )
+    return len(list(resp)) > 0
+    
+    
 LANGUAGES_IN_INSTITUTIONS = ["cs", "en", "hu", "de", "fr", "la", "tr", "sk", "zh", "pl"]
