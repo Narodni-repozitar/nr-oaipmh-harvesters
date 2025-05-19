@@ -1205,7 +1205,7 @@ def _process_person_info(
     name: str,
     affiliations: Optional[Union[str, List[str]]] = None,
     identifiers: Optional[Union[str, List[str]]] = None
-) -> Tuple[str, List[Dict], List[Dict], Optional[str]]:
+) -> Tuple[str, List[Dict], List[Dict]]:
     """Process common person information for both creators and contributors."""
     name_type = ""
     authority_identifiers = []
