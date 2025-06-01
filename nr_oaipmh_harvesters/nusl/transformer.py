@@ -161,25 +161,6 @@ class NUSLTransformer(OAIRuleTransformer):
 
         return True
 
-@matches("8564_u", "8564_z", "8564_y", paired=True)
-def transform_856_attachments(md, entry, value):
-    link, description, language_version = value
-    filename = link.split("/")[-1]
-    if filename is None:
-        raise ValueError("File link is not present")
-    
-    if ".gif" in filename:
-        return
-    
-    file_note = ""
-    if description is not None:
-        file_note = description
-    if language_version is not None:
-        file_note += f" ({language_version})"
-    
-    entry.files.append(StreamEntryFile({ "key": filename, "metadata": { "metadata": { "file_note": file_note } }}, link))
-    entry.transformed["files"]["enabled"] = True
-
 @matches("001")
 def transform_001_control_number(md, entry, value):
     md.setdefault("systemIdentifiers", []).append(
@@ -436,15 +417,41 @@ def transform_720_creator(md: Dict, entry: Dict, value: Tuple) -> None:
         return
 
     name, affiliations, identifiers = value
-    name_type, authority_identifiers, processed_affiliations = _process_person_info(
-        name, affiliations, identifiers
-    )
     
-    if name_type == "organizational":
-        ror = [] if not identifiers else [idf for idf in identifiers if "ror" in idf]
-        name = _find_institution_name(name, None if not ror else ror[0])
-        if not name:
-            raise ValueError("Creator marked as organizational but the data were not found")
+    name_type = None
+    processed_affiliations = []
+    authority_identifiers = []
+    
+    if affiliations:
+        affiliations = [affiliations] if isinstance(affiliations, str) else affiliations
+        processed_affiliations = _process_affiliations(affiliations)
+    if identifiers:
+        identifiers = [identifiers] if isinstance(identifiers, str) else identifiers
+        authority_identifiers = [
+        _create_identifier_object(*_parse_identifier(idf))
+        for idf in identifiers
+        if idf
+    ]
+    
+    ror = [] if not identifiers else [idf for idf in identifiers if "ror" in idf]
+    ico = [] if not identifiers else [idf for idf in identifiers if "ico" in idf.lower()]
+    institution_was_found, institution_title = _find_institution(name, None if not ror else ror[0], None if not ico else ico[0])
+    if institution_was_found:
+        name_type = "organizational"
+        name = institution_title
+    elif not ror:
+        creatibutor_was_found, _ = _find_creatibutor(authority_identifiers)
+        if creatibutor_was_found:
+            name_type = "personal"
+    
+    if not name_type and identifiers:
+        raise ValueError(f"Can not automatically decide 'personal'/'organizational': {value}. Add to vocabulary then.")
+    
+    if not name_type and not identifiers:
+        # Should be marked as deprecated and inserted into its particular vocabulary.
+        # Currently we do not have tags in vocabularies so just add without insertion.
+        log.warning(f"{value[0]} marked as personal")
+        name_type = "personal"
     
     creator = {
         "affiliations": processed_affiliations,
@@ -469,10 +476,11 @@ def transform_720_contributor(md: Dict, entry: Dict, value: Tuple) -> None:
         return
 
     name, role, affiliations, identifiers = value
-    name_type, authority_identifiers, processed_affiliations = _process_person_info(
-        name, affiliations, identifiers
-    )
-
+    
+    name_type = None
+    processed_affiliations = []
+    authority_identifiers = []
+    
     contributor_types = vocabulary_cache.by_id("contributor-types", "id", "title")
     role_from_vocab = {"id": contributor_types["other"]["id"]}
     
@@ -483,13 +491,38 @@ def transform_720_contributor(md: Dict, entry: Dict, value: Tuple) -> None:
                     contributor_type["title"]["en"]
                 ]["id"]
                 break
+    
+    if affiliations:
+        affiliations = [affiliations] if isinstance(affiliations, str) else affiliations
+        processed_affiliations = _process_affiliations(affiliations)
+    if identifiers:
+        identifiers = [identifiers] if isinstance(identifiers, str) else identifiers
+        authority_identifiers = [
+        _create_identifier_object(*_parse_identifier(idf))
+        for idf in identifiers
+        if idf
+    ]
 
-    if name_type == "organizational":
-        ror = [] if not identifiers else [idf for idf in identifiers if "ror" in idf]
-        name = _find_institution_name(name, None if not ror else ror[0])
-        if not name:
-            raise ValueError("Creator marked as organizational but the data were not found")
-
+    ror = [] if not identifiers else [idf for idf in identifiers if "ror" in idf]
+    ico = [] if not identifiers else [idf for idf in identifiers if "ico" in idf.lower()]
+    institution_was_found, institution_title = _find_institution(name, None if not ror else ror[0], None if not ico else ico[0])
+    if institution_was_found:
+        name_type = "organizational"
+        name = institution_title
+    elif not ror:
+        creatibutor_was_found, _ = _find_creatibutor(authority_identifiers)
+        if creatibutor_was_found:
+            name_type = "personal"
+    
+    if not name_type and identifiers:
+        raise ValueError(f"Can not automatically decide 'personal'/'organizational': {value}. Add to vocabulary then.")
+    
+    if not name_type and not identifiers:
+        # Should be marked as deprecated and inserted into its particular vocabulary.
+        # Currently we do not have tags in vocabularies so just add without insertion.
+        log.warning(f"{value[0]} marked as personal")
+        name_type = "personal"
+    
     contributor = {
         "role": role_from_vocab,
         "affiliations": processed_affiliations,
@@ -499,6 +532,7 @@ def transform_720_contributor(md: Dict, entry: Dict, value: Tuple) -> None:
             "identifiers": authority_identifiers
         }
     }
+    
     if name_type == "personal":
         given_name, family_name = _parse_personal_name(name)
         contributor["person_or_org"].update({
@@ -780,6 +814,24 @@ def transform_656_study_field(md, entry, value):
     value = [x for x in value if x]
     md.setdefault("thesis", {}).setdefault("studyFields", []).extend(value)
 
+@matches("8564_u", "8564_z", "8564_y", paired=True)
+def transform_856_attachments(md, entry, value):
+    link, description, language_version = value
+    filename = link.split("/")[-1]
+    if filename is None:
+        raise ValueError("File link is not present")
+    
+    if ".gif" in filename:
+        return
+    
+    file_note = ""
+    if description is not None:
+        file_note = description
+    if language_version is not None:
+        file_note += f" ({language_version})"
+    
+    entry.files.append(StreamEntryFile({ "key": filename, "metadata": { "metadata": { "file_note": file_note } }}, link))
+    entry.transformed["files"]["enabled"] = True
 
 @matches("998__a")
 def transform_998_collection(md, entry, value):
@@ -1066,19 +1118,6 @@ class VocabularyCache:
 
         current_cache.set(cache_key, ret, timeout=DEFAULT_VOCABULARY_CACHE_TTL)
         return ret
-
-    def by_ico(self, ico):
-        from invenio_vocabularies.proxies import current_service
-        from invenio_access.permissions import system_identity
-
-        q = f'props.ICO:"{ico}"'
-        resp = current_service.search(
-            system_identity, type="institutions", params={"q": q}
-        )
-        try:
-            return "organizational" if len(list(resp)) > 0 else None
-        except IndexError:
-            return None
     
     def _get_institution_score(self, inst_string, candidate, ancestors):
         def powerset(iterable):
@@ -1144,30 +1183,8 @@ class VocabularyCache:
         return sum(distances) / len(distances), matched_tested, alternative_parts
 
 
-lucene_escape_chars = {
-    "+",
-    "-",
-    "&",
-    "|",
-    "!",
-    "(",
-    ")",
-    "{",
-    "}",
-    "[",
-    "]",
-    "^",
-    '"',
-    "~",
-    "*",
-    "?",
-    ":",
-    "\\",
-}
-
-
 def lucene_escape(str):
-    return "".join(f"\\{x}" if x in lucene_escape_chars else x for x in str)
+    return "".join(f"\\{x}" if x in LUCENE_ESCAPE_CHARS else x for x in str)
 
 
 def convert_to_date(value):
@@ -1183,53 +1200,6 @@ def convert_to_date(value):
 
 vocabulary_cache = VocabularyCache()
 
-
-def _process_person_info(
-    name: str,
-    affiliations: Optional[Union[str, List[str]]] = None,
-    identifiers: Optional[Union[str, List[str]]] = None
-) -> Tuple[str, List[Dict], List[Dict], Optional[str]]:
-    """Process common person information for both creators and contributors."""
-    name_type = ""
-    authority_identifiers = []
-    processed_affiliations = []
-
-    if affiliations:
-        affiliations = [affiliations] if isinstance(affiliations, str) else [aff for aff in affiliations if aff]
-        if any("ror" in aff.lower() for aff in affiliations):
-            name_type = "personal"
-        processed_affiliations = _process_affiliations(affiliations)
-
-    if identifiers:
-        identifiers = [identifiers] if isinstance(identifiers, str) else [idf for idf in identifiers if idf]
-        if any("ror" in idf.lower() for idf in identifiers):
-            name_type = "organizational"
-        authority_identifiers = [
-            _create_identifier_object(*_parse_identifier(idf))
-            for idf in identifiers
-            if idf
-        ]
-
-    if not name_type:
-        ico_idf = [idf for idf in identifiers if "ico" in idf.lower()] if identifiers else []
-        if ico_idf:
-            inst = vocabulary_cache.by_ico(ico_idf)
-            if inst:
-                name_type = "organizational"
-            else:
-                raise ValueError(f"Missing institution with ICO: {ico_idf}")
-        else:
-            inst = _find_institution_name(name)
-            if inst:
-                name_type = "organizational"
-            else:
-                if _is_in_names(name):
-                    name_type = "personal"
-                else:
-                    raise ValueError(f"'{name}' cannot be classified as 'personal' or 'organizational'")
-                    
-    return name_type, authority_identifiers, processed_affiliations
-
 def _parse_identifier(identifier: str) -> Tuple[str, str]:
     normalized_identifier = identifier.lower()
     if "scopusid" in normalized_identifier:
@@ -1237,7 +1207,7 @@ def _parse_identifier(identifier: str) -> Tuple[str, str]:
     elif "researcherid" in normalized_identifier:
         return "researcherId", identifier.split(": ")[1]
     elif "orcid" in normalized_identifier:
-        return "orcid", identifier
+        return "orcid", identifier.split("/")[-1]
     elif "ico" in normalized_identifier:
         return "ico", identifier.split(": ")[1]
     elif "ror" in normalized_identifier:
@@ -1326,7 +1296,10 @@ def _transform_title(md, entry, titleType, val):
             }
         )
 
-def _find_institution_name(name: str, ror: Optional[str] = None) -> str:
+def _find_institution(name: str, ror: Optional[str] = None, ico: Optional[str] = None) -> Tuple[bool, Optional[str]]:
+    """
+    Check whether the given name and ror are present in the institutions vocabulary.
+    """
     from invenio_vocabularies.proxies import current_service
     from invenio_access.permissions import system_identity
 
@@ -1341,36 +1314,79 @@ def _find_institution_name(name: str, ror: Optional[str] = None) -> str:
     query = " OR ".join(query_parts)
     
     if ror:
-        query += " OR relatedURI.ROR:\"{ror}\""
-    resp = current_service.search(
-        system_identity, type="institutions", params={"q": query}
-    )
+        query += f" OR relatedURI.ROR:\"{ror}\""
     
-    results = list(resp)
-    if len(results) == 0:
-        return ""
+    if ico:
+        ico = ico.split(":")[-1].strip()
+        query += f" OR props.ICO:\"{ico}\""
     
-    result = results[0]
-    if "cs" in result["title"]:
-        return result["title"]["cs"]
-    elif "en" in result["title"]:
-        return result["title"]["en"]
-    else:
-        return list(result["title"].values())[0]
+    try:
+        resp = current_service.search(
+            system_identity, type="institutions", params={"q": query}
+        )
+
+        result = list(resp)[0]
+        if "cs" in result["title"]:
+            title = result["title"]["cs"]
+        else:
+            title = list(result["title"].values())[0]
+        return True, title
+    except IndexError:
+        return False, None
+    except Exception as e:
+        log.error(f"Failed to search in institutions vocabulary with {name=} and {ror=}: {e}")
+        return False, None
     
-def _is_in_names(name: str) -> bool:
+def _find_creatibutor(identifiers: List[str]) -> Tuple[bool, Optional[Dict]]:
     """
-    Check whether the given name is present in the RDM names vocabulary.
+    Check whether the given name and identifiers list are present in the RDM names vocabulary.
     """
+    if not identifiers:
+        return False, None
+    
     from invenio_vocabularies.proxies import current_service
     from invenio_access.permissions import system_identity
 
-    escaped_name = lucene_escape(name)
+    identifier_queries = []
+    for idf in identifiers:
+        identifier_queries.append(
+            f"identifiers.scheme:{lucene_escape(idf['scheme'])} AND " +
+            f"identifiers.identifier:{lucene_escape(idf['identifier'])}"
+        )
     
-    resp = current_service.search(
-        system_identity, type="names", params={"q": {"name": escaped_name}}
-    )
-    return len(list(resp)) > 0
+    query = " OR ".join(f"({q})" for q in identifier_queries)
+    
+    try:
+        resp = current_service.search(
+            system_identity, type="names", params={"q": query}
+        )
+        results = list(resp)
+        return True, results[0]
+    except IndexError:
+        return False, None
+    except Exception as e:
+        log.error(f"Failed to search in names vocabulary with {identifiers=}: {e}")
+        return False, None
     
     
 LANGUAGES_IN_INSTITUTIONS = ["cs", "en", "hu", "de", "fr", "la", "tr", "sk", "zh", "pl"]
+LUCENE_ESCAPE_CHARS = {
+    "+",
+    "-",
+    "&",
+    "|",
+    "!",
+    "(",
+    ")",
+    "{",
+    "}",
+    "[",
+    "]",
+    "^",
+    '"',
+    "~",
+    "*",
+    "?",
+    ":",
+    "\\",
+}
