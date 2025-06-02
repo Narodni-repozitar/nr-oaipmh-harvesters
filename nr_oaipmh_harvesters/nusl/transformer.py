@@ -411,7 +411,7 @@ def parse_place(place):
         res["country"] = {"id": country}
     return res
 
-@matches("720__a", "720__5", "720__6", paired=True, unique=True, group=True)
+@matches("720__a", "720__5", "720__6", paired=True, unique=True, group=["720__5", "720__6"])
 def transform_720_creator(md: Dict, entry: Dict, value: Tuple) -> None:
     if not value[0] or value[0] == "et. al.":
         return
@@ -424,9 +424,11 @@ def transform_720_creator(md: Dict, entry: Dict, value: Tuple) -> None:
     
     if affiliations:
         affiliations = [affiliations] if isinstance(affiliations, str) else affiliations
+        affiliations = [aff for aff in affiliations if aff]
         processed_affiliations = _process_affiliations(affiliations)
     if identifiers:
         identifiers = [identifiers] if isinstance(identifiers, str) else identifiers
+        identifiers = [idf for idf in identifiers if idf]
         authority_identifiers = [
         _create_identifier_object(*_parse_identifier(idf))
         for idf in identifiers
@@ -470,7 +472,7 @@ def transform_720_creator(md: Dict, entry: Dict, value: Tuple) -> None:
     
     md.setdefault("creators", []).append(creator)
 
-@matches("720__i", "720__e", "720__5", "720__6", paired=True, unique=True, group=True)
+@matches("720__i", "720__e", "720__5", "720__6", paired=True, unique=True, group=["720__5", "720__6"])
 def transform_720_contributor(md: Dict, entry: Dict, value: Tuple) -> None:
     if not value[0]:
         return
