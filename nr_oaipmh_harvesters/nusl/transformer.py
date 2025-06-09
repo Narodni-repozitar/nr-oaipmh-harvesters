@@ -4,6 +4,7 @@ import re
 from oarepo_oaipmh_harvester.transformers.rule import (
     OAIRuleTransformer,
     matches,
+    matches_grouped,
     deduplicate,
     ignore,
     make_dict,
@@ -411,7 +412,7 @@ def parse_place(place):
         res["country"] = {"id": country}
     return res
 
-@matches("720__a", "720__5", "720__6", paired=True, unique=True, group=["720__5", "720__6"])
+@matches_grouped("720__a", "720__5", "720__6", unique=True, group=["720__5", "720__6"])
 def transform_720_creator(md: Dict, entry: Dict, value: Tuple) -> None:
     if not value[0] or value[0] == "et. al.":
         return
@@ -472,7 +473,7 @@ def transform_720_creator(md: Dict, entry: Dict, value: Tuple) -> None:
     
     md.setdefault("creators", []).append(creator)
 
-@matches("720__i", "720__e", "720__5", "720__6", paired=True, unique=True, group=["720__5", "720__6"])
+@matches_grouped("720__i", "720__e", "720__5", "720__6", unique=True, group=["720__5", "720__6"])
 def transform_720_contributor(md: Dict, entry: Dict, value: Tuple) -> None:
     if not value[0]:
         return
