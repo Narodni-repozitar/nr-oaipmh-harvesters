@@ -1322,6 +1322,7 @@ def _process_affiliations(affiliations: List[str]) -> List[Dict[str, str]]:
 
     return vocabulary_affiliations
 
+
 def _process_affiliations_temp(affiliations: List[str]) -> List[Dict[str, str]]:
     vocabulary_affiliations = []
     for affiliation in affiliations:
@@ -1332,13 +1333,16 @@ def _process_affiliations_temp(affiliations: List[str]) -> List[Dict[str, str]]:
             found, found_inst = _find_institution_in_temp("", None, ico)
         else:
             found, found_inst = _find_institution_in_temp(affiliation)
-        
+
         if not found:
-            raise ValueError(f"Affiliation: '{affiliation}' not found in the temporary institution vocabulary.")
-        
+            raise ValueError(
+                f"Affiliation: '{affiliation}' not found in the temporary institution vocabulary."
+            )
+
         vocabulary_affiliations.append(found_inst)
-            
+
     return vocabulary_affiliations
+
 
 def _parse_personal_name(name: str) -> Tuple[str, str]:
     names = name.split(",")
@@ -1465,7 +1469,7 @@ def _find_institution_in_temp(
         title = found_inst["title"]["cs"]
     else:
         title = list(found_inst["title"].values())[0]
-    return True, { "id": inst["id"], "name": title }
+    return True, {"id": inst["id"], "name": title}
 
 
 def _find_creatibutor(identifiers: List[str]) -> Tuple[bool, Optional[Dict]]:
