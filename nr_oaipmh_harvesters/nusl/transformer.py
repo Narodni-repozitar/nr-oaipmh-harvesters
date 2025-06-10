@@ -424,7 +424,7 @@ def transform_720_creator(md: Dict, entry: Dict, value: Tuple) -> None:
     if affiliations:
         affiliations = [affiliations] if isinstance(affiliations, str) else affiliations
         affiliations = [aff for aff in affiliations if aff]
-        processed_affiliations = _process_affiliations(affiliations)
+        processed_affiliations = _process_affiliations_temp(affiliations)
     if identifiers:
         identifiers = [identifiers] if isinstance(identifiers, str) else identifiers
         identifiers = [idf for idf in identifiers if idf]
@@ -438,12 +438,12 @@ def transform_720_creator(md: Dict, entry: Dict, value: Tuple) -> None:
     ico = (
         [] if not identifiers else [idf for idf in identifiers if "ico" in idf.lower()]
     )
-    institution_was_found, institution_title = _find_institution_in_temp(
+    institution_was_found, institution = _find_institution_in_temp(
         name, None if not ror else ror[0], None if not ico else ico[0]
     )
     if institution_was_found:
         name_type = "organizational"
-        name = institution_title
+        name = institution["name"]
     elif not ror:
         creatibutor_was_found, _ = _find_creatibutor(authority_identifiers)
         if creatibutor_was_found:
@@ -509,7 +509,7 @@ def transform_720_contributor(md: Dict, entry: Dict, value: Tuple) -> None:
 
     if affiliations:
         affiliations = [affiliations] if isinstance(affiliations, str) else affiliations
-        processed_affiliations = _process_affiliations(affiliations)
+        processed_affiliations = _process_affiliations_temp(affiliations)
     if identifiers:
         identifiers = [identifiers] if isinstance(identifiers, str) else identifiers
         authority_identifiers = [
@@ -522,12 +522,12 @@ def transform_720_contributor(md: Dict, entry: Dict, value: Tuple) -> None:
     ico = (
         [] if not identifiers else [idf for idf in identifiers if "ico" in idf.lower()]
     )
-    institution_was_found, institution_title = _find_institution_in_temp(
+    institution_was_found, institution = _find_institution_in_temp(
         name, None if not ror else ror[0], None if not ico else ico[0]
     )
     if institution_was_found:
         name_type = "organizational"
-        name = institution_title
+        name = institution["name"]
     elif not ror:
         creatibutor_was_found, _ = _find_creatibutor(authority_identifiers)
         if creatibutor_was_found:
@@ -1322,6 +1322,23 @@ def _process_affiliations(affiliations: List[str]) -> List[Dict[str, str]]:
 
     return vocabulary_affiliations
 
+def _process_affiliations_temp(affiliations: List[str]) -> List[Dict[str, str]]:
+    vocabulary_affiliations = []
+    for affiliation in affiliations:
+        if "ror" in affiliation.lower():
+            found, found_inst = _find_institution_in_temp("", affiliation)
+        elif "ico" in affiliation.lower():
+            ico = affiliation.split(": ")[-1]
+            found, found_inst = _find_institution_in_temp("", None, ico)
+        else:
+            found, found_inst = _find_institution_in_temp(affiliation)
+        
+        if not found:
+            raise ValueError(f"Affiliation: '{affiliation}' not found in the temporary institution vocabulary.")
+        
+        vocabulary_affiliations.append(found_inst)
+            
+    return vocabulary_affiliations
 
 def _parse_personal_name(name: str) -> Tuple[str, str]:
     names = name.split(",")
@@ -1402,7 +1419,7 @@ def _find_institution(
 
 def _find_institution_in_temp(
     name: str, ror: Optional[str] = None, ico: Optional[str] = None
-) -> Tuple[bool, Optional[str]]:
+) -> Tuple[bool, Optional[Dict[str, str]]]:
     """
     Check whether the given name and ror are present in the temporary institutions vocabulary.
     """
@@ -1448,7 +1465,7 @@ def _find_institution_in_temp(
         title = found_inst["title"]["cs"]
     else:
         title = list(found_inst["title"].values())[0]
-    return True, title
+    return True, { "id": inst["id"], "name": title }
 
 
 def _find_creatibutor(identifiers: List[str]) -> Tuple[bool, Optional[Dict]]:
