@@ -1,26 +1,26 @@
-from datetime import datetime
 import itertools
+import logging
 import re
-from oarepo_oaipmh_harvester.transformers.rule import (
-    OAIRuleTransformer,
-    matches,
-    matches_grouped,
-    deduplicate,
-    ignore,
-    make_dict,
-    make_array,
-)
-from oarepo_runtime.datastreams.types import StreamEntry, StreamEntryFile
-import pycountry
+from datetime import datetime
 from typing import Dict, List, Optional, Tuple, Union
 
-from invenio_cache.proxies import current_cache
-
-import logging
-
-import sqlalchemy
 import Levenshtein
+import pycountry
+import sqlalchemy
+from invenio_cache.proxies import current_cache
 from invenio_search.engine import dsl
+from oarepo_oaipmh_harvester.transformers.rule import (
+    OAIRuleTransformer,
+    deduplicate,
+    ignore,
+    make_array,
+    make_dict,
+    matches,
+    matches_grouped,
+)
+from oarepo_runtime.datastreams.types import StreamEntry, StreamEntryFile
+
+from nr_oaipmh_harvesters.nusl.temp_institutions import TEMP_INSTITUTIONS
 
 log = logging.getLogger("oaipmh.harvester")
 
@@ -162,6 +162,7 @@ class NUSLTransformer(OAIRuleTransformer):
 
         return True
 
+
 @matches("001")
 def transform_001_control_number(md, entry, value):
     md.setdefault("systemIdentifiers", []).append(
@@ -174,9 +175,7 @@ def transform_020_isbn(md, entry, value):
     identifiers = []
     parse_isbn(value, identifiers)
 
-    md.setdefault("objectIdentifiers", []).append(
-        identifiers[0]
-    )
+    md.setdefault("objectIdentifiers", []).append(identifiers[0])
 
 
 @matches("022__a")
@@ -184,9 +183,7 @@ def transform_022_issn(md, entry, value):
     identifiers = []
     parse_issn(value, identifiers)
 
-    md.setdefault("objectIdentifiers", []).append(
-        identifiers[0]
-    )
+    md.setdefault("objectIdentifiers", []).append(identifiers[0])
 
 
 @matches("035__a")
@@ -306,7 +303,7 @@ def transform_650_7_subject(md, entry, value):
 def transform_subject(md, value):
     if all(not v for v in value):
         return
-    
+
     purl = value[3] or ""
     val_url = (
         purl if purl.startswith("http://") or purl.startswith("https://") else None
@@ -412,17 +409,18 @@ def parse_place(place):
         res["country"] = {"id": country}
     return res
 
+
 @matches_grouped("720__a", "720__5", "720__6", unique=True, group=["720__5", "720__6"])
 def transform_720_creator(md: Dict, entry: Dict, value: Tuple) -> None:
     if not value[0] or value[0] == "et. al.":
         return
 
     name, affiliations, identifiers = value
-    
+
     name_type = None
     processed_affiliations = []
     authority_identifiers = []
-    
+
     if affiliations:
         affiliations = [affiliations] if isinstance(affiliations, str) else affiliations
         affiliations = [aff for aff in affiliations if aff]
@@ -431,14 +429,18 @@ def transform_720_creator(md: Dict, entry: Dict, value: Tuple) -> None:
         identifiers = [identifiers] if isinstance(identifiers, str) else identifiers
         identifiers = [idf for idf in identifiers if idf]
         authority_identifiers = [
-        _create_identifier_object(*_parse_identifier(idf))
-        for idf in identifiers
-        if idf
-    ]
-    
+            _create_identifier_object(*_parse_identifier(idf))
+            for idf in identifiers
+            if idf
+        ]
+
     ror = [] if not identifiers else [idf for idf in identifiers if "ror" in idf]
-    ico = [] if not identifiers else [idf for idf in identifiers if "ico" in idf.lower()]
-    institution_was_found, institution_title = _find_institution(name, None if not ror else ror[0], None if not ico else ico[0])
+    ico = (
+        [] if not identifiers else [idf for idf in identifiers if "ico" in idf.lower()]
+    )
+    institution_was_found, institution_title = _find_institution_in_temp(
+        name, None if not ror else ror[0], None if not ico else ico[0]
+    )
     if institution_was_found:
         name_type = "organizational"
         name = institution_title
@@ -446,69 +448,83 @@ def transform_720_creator(md: Dict, entry: Dict, value: Tuple) -> None:
         creatibutor_was_found, _ = _find_creatibutor(authority_identifiers)
         if creatibutor_was_found:
             name_type = "personal"
-    
+
     if not name_type and identifiers:
-        raise ValueError(f"Can not automatically decide 'personal'/'organizational': {value}. Add to vocabulary then.")
-    
+        raise ValueError(
+            f"Can not automatically decide 'personal'/'organizational': {value}. Add to vocabulary then."
+        )
+
     if not name_type and not identifiers:
         # Should be marked as deprecated and inserted into its particular vocabulary.
         # Currently we do not have tags in vocabularies so just add without insertion.
         log.warning(f"{value[0]} marked as personal")
         name_type = "personal"
-    
+
     creator = {
         "affiliations": processed_affiliations,
         "person_or_org": {
             "name": name,
             "type": name_type,
-            "identifiers": authority_identifiers
-        }
+            "identifiers": authority_identifiers,
+        },
     }
     if name_type == "personal":
         given_name, family_name = _parse_personal_name(name)
-        creator["person_or_org"].update({
-            "given_name": given_name,
-            "family_name": family_name,
-        })
-    
+        creator["person_or_org"].update(
+            {
+                "given_name": given_name,
+                "family_name": family_name,
+            }
+        )
+
     md.setdefault("creators", []).append(creator)
 
-@matches_grouped("720__i", "720__e", "720__5", "720__6", unique=True, group=["720__5", "720__6"])
+
+@matches_grouped(
+    "720__i", "720__e", "720__5", "720__6", unique=True, group=["720__5", "720__6"]
+)
 def transform_720_contributor(md: Dict, entry: Dict, value: Tuple) -> None:
     if not value[0]:
         return
 
     name, role, affiliations, identifiers = value
-    
+
     name_type = None
     processed_affiliations = []
     authority_identifiers = []
-    
+
     contributor_types = vocabulary_cache.by_id("contributor-types", "id", "title")
     role_from_vocab = {"id": contributor_types["other"]["id"]}
-    
+
     if role:
         for contributor_type in contributor_types.values():
-            if role in (contributor_type["title"]["cs"], contributor_type["title"]["en"]):
+            if role in (
+                contributor_type["title"]["cs"],
+                contributor_type["title"]["en"],
+            ):
                 role_from_vocab["id"] = contributor_types[
                     contributor_type["title"]["en"]
                 ]["id"]
                 break
-    
+
     if affiliations:
         affiliations = [affiliations] if isinstance(affiliations, str) else affiliations
         processed_affiliations = _process_affiliations(affiliations)
     if identifiers:
         identifiers = [identifiers] if isinstance(identifiers, str) else identifiers
         authority_identifiers = [
-        _create_identifier_object(*_parse_identifier(idf))
-        for idf in identifiers
-        if idf
-    ]
+            _create_identifier_object(*_parse_identifier(idf))
+            for idf in identifiers
+            if idf
+        ]
 
     ror = [] if not identifiers else [idf for idf in identifiers if "ror" in idf]
-    ico = [] if not identifiers else [idf for idf in identifiers if "ico" in idf.lower()]
-    institution_was_found, institution_title = _find_institution(name, None if not ror else ror[0], None if not ico else ico[0])
+    ico = (
+        [] if not identifiers else [idf for idf in identifiers if "ico" in idf.lower()]
+    )
+    institution_was_found, institution_title = _find_institution_in_temp(
+        name, None if not ror else ror[0], None if not ico else ico[0]
+    )
     if institution_was_found:
         name_type = "organizational"
         name = institution_title
@@ -516,46 +532,54 @@ def transform_720_contributor(md: Dict, entry: Dict, value: Tuple) -> None:
         creatibutor_was_found, _ = _find_creatibutor(authority_identifiers)
         if creatibutor_was_found:
             name_type = "personal"
-    
+
     if not name_type and identifiers:
-        raise ValueError(f"Can not automatically decide 'personal'/'organizational': {value}. Add to vocabulary then.")
-    
+        raise ValueError(
+            f"Can not automatically decide 'personal'/'organizational': {value}. Add to vocabulary then."
+        )
+
     if not name_type and not identifiers:
         # Should be marked as deprecated and inserted into its particular vocabulary.
         # Currently we do not have tags in vocabularies so just add without insertion.
         log.warning(f"{value[0]} marked as personal")
         name_type = "personal"
-    
+
     contributor = {
         "role": role_from_vocab,
         "affiliations": processed_affiliations,
         "person_or_org": {
             "name": name,
             "type": name_type,
-            "identifiers": authority_identifiers
-        }
+            "identifiers": authority_identifiers,
+        },
     }
-    
+
     if name_type == "personal":
         given_name, family_name = _parse_personal_name(name)
-        contributor["person_or_org"].update({
-            "given_name": given_name,
-            "family_name": family_name,
-        })
+        contributor["person_or_org"].update(
+            {
+                "given_name": given_name,
+                "family_name": family_name,
+            }
+        )
 
     md.setdefault("contributors", []).append(contributor)
 
 
 @matches("7731_e", "7731_f", "7731_g", "7731_z", "7731_t", "7731_x", paired=True)
 def transform_7731_related_item(md, entry, value):
-    item_year, item_volume, item_issue, item_pids_isbn, item_title, item_pids_issn = value
+    item_year, item_volume, item_issue, item_pids_isbn, item_title, item_pids_issn = (
+        value
+    )
 
     parsed = {
-        k: v for k, v in {
+        k: v
+        for k, v in {
             "itemYear": item_year,
             "itemVolume": item_volume,
-            "itemIssue": item_issue
-        }.items() if v
+            "itemIssue": item_issue,
+        }.items()
+        if v
     }
 
     identifiers = []
@@ -587,13 +611,13 @@ def parse_issn(value, identifiers):
 
 
 def parse_isbn(value, identifiers):
-   for isbn in re.split("[,;]", value):
+    for isbn in re.split("[,;]", value):
         isbn = isbn.strip()
         isbn = isbn.lower()
-        isbn = re.sub(r'\s*\([^)]*\)', '', isbn)
+        isbn = re.sub(r"\s*\([^)]*\)", "", isbn)
         isbn = isbn.removeprefix("isbn:").removeprefix("isbn")
         isbn = isbn.strip()
-        
+
         if isbn and isbn != "n":
             identifiers.append(_create_identifier_object("ISBN", isbn))
 
@@ -683,31 +707,42 @@ def transform_996_accessibility(md, entry, value):
 def transform_999C1_funding_reference(md, entry, val):
     project_id, _ = val
     if project_id:
-        from invenio_vocabularies.proxies import current_service
         from invenio_access.permissions import system_identity
+        from invenio_vocabularies.proxies import current_service
 
         try:
             resp = current_service.search(
                 system_identity,
-                type="awards", 
-                extra_filter=dsl.Q("term", number=project_id)
+                type="awards",
+                extra_filter=dsl.Q("term", number=project_id),
             )
             matched_award = list(resp)[0]
         except Exception as e:
             raise KeyError(f"Project ID: '{project_id}' has not been found") from e
-        
+
         award = {}
-        for field_in_award_datatype in ["id", "title", "number", "acronym", "program", "subjects", "organizations"]:
+        for field_in_award_datatype in [
+            "id",
+            "title",
+            "number",
+            "acronym",
+            "program",
+            "subjects",
+            "organizations",
+        ]:
             if field_in_award_datatype in matched_award:
                 award[field_in_award_datatype] = matched_award[field_in_award_datatype]
-        
-        md.setdefault("funders", []).append({
-            "award": award,
-            "funder": {
-                "id": matched_award["funder"]["id"],
-                "name": matched_award["funder"]["name"]
+
+        md.setdefault("funders", []).append(
+            {
+                "award": award,
+                "funder": {
+                    "id": matched_award["funder"]["id"],
+                    "name": matched_award["funder"]["name"],
+                },
             }
-        })
+        )
+
 
 @matches("04107a", "04107b")
 def transform_04107_language(md, entry, value):
@@ -757,7 +792,7 @@ rights_dict = {
     "License: Creative Commons Attribution-NonCommercial-ShareAlike 3.0 Czech Republic": "3-BY-NC-SA-CZ",
     "License: Creative Commons Attribution-NonCommercial-ShareAlike 4.0": "4-BY-NC-SA",
     "License: Creative Commons Attribution-ShareAlike 3.0 Czech Republic": "3-BY-SA-CZ",
-    "License: Creative Commons Attribution-ShareAlike 4.0": "4-BY-SA"
+    "License: Creative Commons Attribution-ShareAlike 4.0": "4-BY-SA",
 }
 
 
@@ -776,9 +811,13 @@ def transform_oai_identifier(md, entry):
 
 @matches("502__c")
 def transform_502_degree_grantor(md, entry, value):
-    degree_grantor = vocabulary_cache.get_institution(value, vocab_type="degree-grantors")
+    degree_grantor = vocabulary_cache.get_institution(
+        value, vocab_type="degree-grantors"
+    )
     if degree_grantor:
-        md.setdefault("thesis", {}).setdefault("degreeGrantors", []).append(degree_grantor)
+        md.setdefault("thesis", {}).setdefault("degreeGrantors", []).append(
+            degree_grantor
+        )
 
 
 @matches("7102_a", "7102_b", "7102_g", "7102_9", paired=True)
@@ -798,7 +837,9 @@ def transform_7102_degree_grantor(md, entry, value):
     if value[2]:
         degree_grantor.append(value[2])
     if degree_grantor:
-        degree_grantor = vocabulary_cache.get_institution(", ".join(degree_grantor), vocab_type="degree-grantors")
+        degree_grantor = vocabulary_cache.get_institution(
+            ", ".join(degree_grantor), vocab_type="degree-grantors"
+        )
         if degree_grantor:
             md.setdefault("thesis", {}).setdefault("degreeGrantors", []).append(
                 degree_grantor
@@ -817,29 +858,35 @@ def transform_656_study_field(md, entry, value):
     value = [x for x in value if x]
     md.setdefault("thesis", {}).setdefault("studyFields", []).extend(value)
 
+
 @matches("8564_u", "8564_z", "8564_y", paired=True)
 def transform_856_attachments(md, entry, value):
     link, description, language_version = value
     filename = link.split("/")[-1]
     if filename is None:
         raise ValueError("File link is not present")
-    
+
     if ".gif" in filename:
         return
-    
+
     file_note = ""
     if description is not None:
         file_note = description
     if language_version is not None:
         file_note += f" ({language_version})"
-    
-    entry.files.append(StreamEntryFile({ "key": filename, "metadata": { "metadata": { "file_note": file_note } }}, link))
+
+    entry.files.append(
+        StreamEntryFile(
+            {"key": filename, "metadata": {"metadata": {"file_note": file_note}}}, link
+        )
+    )
     entry.transformed["files"]["enabled"] = True
+
 
 @matches("998__a")
 def transform_998_collection(md, entry, value):
-    from invenio_communities.proxies import current_communities
     from invenio_access.permissions import system_identity
+    from invenio_communities.proxies import current_communities
 
     nusl_id_to_slug_mapping = {
         "agritec": "7emz",
@@ -1002,18 +1049,22 @@ def transform_998_collection(md, entry, value):
         "vyzkumny_ustav_silva_taroucy": "4eqq",
         "woodexpert": "0w0h",
         "zapadoceska_univerzita": "6f0m",
-        "zapadoceske_muzeum_v_plzni": "efbe"
+        "zapadoceske_muzeum_v_plzni": "efbe",
     }
 
     if value not in nusl_id_to_slug_mapping:
         raise ValueError(f"{value} is not a valid slug for any community.")
 
-    slug_filter = dsl.Q("term", **{ "slug": nusl_id_to_slug_mapping[value] })
-    results = current_communities.service.search(system_identity, extra_filter=slug_filter)
+    slug_filter = dsl.Q("term", **{"slug": nusl_id_to_slug_mapping[value]})
+    results = current_communities.service.search(
+        system_identity, extra_filter=slug_filter
+    )
     if not results:
         raise ValueError(f"{value} is not a valid slug for any community.")
     community = list(results)[0]
-    entry.transformed.setdefault("parent", {}).setdefault("communities", {})["default"] = community["id"]
+    entry.transformed.setdefault("parent", {}).setdefault("communities", {})[
+        "default"
+    ] = community["id"]
 
 
 @matches("502__a")
@@ -1035,8 +1086,8 @@ class VocabularyCache:
         if ret:
             return ret
 
-        from invenio_vocabularies.proxies import current_service
         from invenio_access.permissions import system_identity
+        from invenio_vocabularies.proxies import current_service
 
         try:
             vocabulary_data = current_service.scan(
@@ -1084,12 +1135,10 @@ class VocabularyCache:
             f'hierarchy.title.cs: "{lucene_escape(x)}"^2 OR nonpreferredLabels.cs: "{lucene_escape(x)}"'
             for x in candidate_strings
         )
-        from invenio_vocabularies.proxies import current_service
         from invenio_access.permissions import system_identity
+        from invenio_vocabularies.proxies import current_service
 
-        resp = current_service.search(
-            system_identity, type=vocab_type, params={"q": q}
-        )
+        resp = current_service.search(system_identity, type=vocab_type, params={"q": q})
         candidates = {r["id"]: r for r in list(resp)}
         if not candidates:
             return None
@@ -1121,7 +1170,7 @@ class VocabularyCache:
 
         current_cache.set(cache_key, ret, timeout=DEFAULT_VOCABULARY_CACHE_TTL)
         return ret
-    
+
     def _get_institution_score(self, inst_string, candidate, ancestors):
         def powerset(iterable):
             s = list(iterable)
@@ -1203,6 +1252,7 @@ def convert_to_date(value):
 
 vocabulary_cache = VocabularyCache()
 
+
 def _parse_identifier(identifier: str) -> Tuple[str, str]:
     normalized_identifier = identifier.lower()
     if "scopusid" in normalized_identifier:
@@ -1218,15 +1268,14 @@ def _parse_identifier(identifier: str) -> Tuple[str, str]:
     else:
         raise ValueError(f"Undefined scheme for the identifier: {identifier}")
 
+
 def _create_identifier_object(scheme: str, identifier: str) -> Dict[str, str]:
-    return {
-        "scheme": scheme,
-        "identifier": identifier
-    }
+    return {"scheme": scheme, "identifier": identifier}
+
 
 def _process_affiliations(affiliations: List[str]) -> List[Dict[str, str]]:
-    from invenio_vocabularies.proxies import current_service
     from invenio_access.permissions import system_identity
+    from invenio_vocabularies.proxies import current_service
 
     def _prepare_affiliation_query(affiliation: str):
         if "ror" in affiliation.lower():
@@ -1241,7 +1290,9 @@ def _process_affiliations(affiliations: List[str]) -> List[Dict[str, str]]:
                 *[f"title.{lang}" for lang in LANGUAGES_IN_INSTITUTIONS],
                 *[f"nonpreferredLabels.{lang}" for lang in LANGUAGES_IN_INSTITUTIONS],
             ]
-            return " OR ".join([f'{candidate}:"{escaped_name}"' for candidate in candidates])
+            return " OR ".join(
+                [f'{candidate}:"{escaped_name}"' for candidate in candidates]
+            )
 
     vocabulary_affiliations = []
     for affiliation in affiliations:
@@ -1258,23 +1309,26 @@ def _process_affiliations(affiliations: List[str]) -> List[Dict[str, str]]:
             else:
                 title = list(result["title"].values())[0]
             if not title:
-                raise ValueError(f"Affiliation: '{affiliation}' does not have a valid title.")
-            
-            result = {
-                "id": result["id"],
-                "name": title
-            }
+                raise ValueError(
+                    f"Affiliation: '{affiliation}' does not have a valid title."
+                )
+
+            result = {"id": result["id"], "name": title}
             vocabulary_affiliations.append(result)
         except IndexError:
-            raise ValueError(f"Affiliation: '{affiliation}' not found in the institution vocabulary.")
+            raise ValueError(
+                f"Affiliation: '{affiliation}' not found in the institution vocabulary."
+            )
 
     return vocabulary_affiliations
+
 
 def _parse_personal_name(name: str) -> Tuple[str, str]:
     names = name.split(",")
     family_name = names[0].strip()
     given_name = "".join(names[1:]).strip(",").strip()
     return given_name, family_name
+
 
 def _transform_title(md, entry, titleType, val):
     if val is None:
@@ -1299,15 +1353,18 @@ def _transform_title(md, entry, titleType, val):
             }
         )
 
-def _find_institution(name: str, ror: Optional[str] = None, ico: Optional[str] = None) -> Tuple[bool, Optional[str]]:
+
+def _find_institution(
+    name: str, ror: Optional[str] = None, ico: Optional[str] = None
+) -> Tuple[bool, Optional[str]]:
     """
     Check whether the given name and ror are present in the institutions vocabulary.
     """
-    from invenio_vocabularies.proxies import current_service
     from invenio_access.permissions import system_identity
+    from invenio_vocabularies.proxies import current_service
 
     escaped_name = lucene_escape(name)
-    
+
     candidates = [
         "props.acronym",
         *[f"title.{lang}" for lang in LANGUAGES_IN_INSTITUTIONS],
@@ -1315,14 +1372,14 @@ def _find_institution(name: str, ror: Optional[str] = None, ico: Optional[str] =
     ]
     query_parts = [f'{candidate}:"{escaped_name}"' for candidate in candidates]
     query = " OR ".join(query_parts)
-    
+
     if ror:
-        query += f" OR relatedURI.ROR:\"{ror}\""
-    
+        query += f' OR relatedURI.ROR:"{ror}"'
+
     if ico:
         ico = ico.split(":")[-1].strip()
-        query += f" OR props.ICO:\"{ico}\""
-    
+        query += f' OR props.ICO:"{ico}"'
+
     try:
         resp = current_service.search(
             system_identity, type="institutions", params={"q": query}
@@ -1337,28 +1394,82 @@ def _find_institution(name: str, ror: Optional[str] = None, ico: Optional[str] =
     except IndexError:
         return False, None
     except Exception as e:
-        log.error(f"Failed to search in institutions vocabulary with {name=} and {ror=}: {e}")
+        log.error(
+            f"Failed to search in institutions vocabulary with {name=} and {ror=}: {e}"
+        )
         return False, None
-    
+
+
+def _find_institution_in_temp(
+    name: str, ror: Optional[str] = None, ico: Optional[str] = None
+) -> Tuple[bool, Optional[str]]:
+    """
+    Check whether the given name and ror are present in the temporary institutions vocabulary.
+    """
+    found, found_inst = False, None
+    for inst in TEMP_INSTITUTIONS:
+        ico_is_matched = (
+            ico
+            and "props" in inst
+            and "ICO" in inst["props"]
+            and inst["props"]["ICO"] == ico
+        )
+        ror_is_matched = (
+            ror
+            and "relatedURI" in inst
+            and "ROR" in inst["relatedURI"]
+            and inst["relatedURI"]["ROR"] == ror
+        )
+        acronym_is_matched = (
+            "props" in inst
+            and "acronym" in inst["props"]
+            and inst["props"]["acronym"] == name
+        )
+        language_title_is_matched = any(
+            [
+                name == inst["title"][lang]
+                for lang in LANGUAGES_IN_INSTITUTIONS
+                if lang in inst["title"]
+            ]
+        )
+
+        if (
+            ico_is_matched
+            or ror_is_matched
+            or acronym_is_matched
+            or language_title_is_matched
+        ):
+            found, found_inst = True, inst
+
+    if not found:
+        return False, None
+
+    if "cs" in found_inst["title"]:
+        title = found_inst["title"]["cs"]
+    else:
+        title = list(found_inst["title"].values())[0]
+    return True, title
+
+
 def _find_creatibutor(identifiers: List[str]) -> Tuple[bool, Optional[Dict]]:
     """
     Check whether the given name and identifiers list are present in the RDM names vocabulary.
     """
     if not identifiers:
         return False, None
-    
-    from invenio_vocabularies.proxies import current_service
+
     from invenio_access.permissions import system_identity
+    from invenio_vocabularies.proxies import current_service
 
     identifier_queries = []
     for idf in identifiers:
         identifier_queries.append(
-            f"identifiers.scheme:{lucene_escape(idf['scheme'])} AND " +
-            f"identifiers.identifier:{lucene_escape(idf['identifier'])}"
+            f"identifiers.scheme:{lucene_escape(idf['scheme'])} AND "
+            + f"identifiers.identifier:{lucene_escape(idf['identifier'])}"
         )
-    
+
     query = " OR ".join(f"({q})" for q in identifier_queries)
-    
+
     try:
         resp = current_service.search(
             system_identity, type="names", params={"q": query}
@@ -1370,9 +1481,21 @@ def _find_creatibutor(identifiers: List[str]) -> Tuple[bool, Optional[Dict]]:
     except Exception as e:
         log.error(f"Failed to search in names vocabulary with {identifiers=}: {e}")
         return False, None
-    
-    
-LANGUAGES_IN_INSTITUTIONS = ["cs", "en", "hu", "de", "fr", "la", "tr", "sk", "zh", "pl"]
+
+
+LANGUAGES_IN_INSTITUTIONS = [
+    "cs",
+    "en",
+    "hu",
+    "de",
+    "fr",
+    "la",
+    "tr",
+    "sk",
+    "zh",
+    "pl",
+    "cy",
+]
 LUCENE_ESCAPE_CHARS = {
     "+",
     "-",
