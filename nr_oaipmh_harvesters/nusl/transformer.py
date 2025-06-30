@@ -436,7 +436,7 @@ def transform_720_creator(md: Dict, entry: Dict, value: Tuple) -> None:
 
     ror = [] if not identifiers else [idf for idf in identifiers if "ror" in idf]
     ico = (
-        [] if not identifiers else [idf for idf in identifiers if "ico" in idf.lower()]
+        [] if not identifiers else [idf.split(" ")[-1] for idf in identifiers if "ico" in idf.lower()]
     )
     institution_was_found, institution = _find_institution_in_temp(
         name, None if not ror else ror[0], None if not ico else ico[0]
@@ -520,7 +520,7 @@ def transform_720_contributor(md: Dict, entry: Dict, value: Tuple) -> None:
 
     ror = [] if not identifiers else [idf for idf in identifiers if "ror" in idf]
     ico = (
-        [] if not identifiers else [idf for idf in identifiers if "ico" in idf.lower()]
+        [] if not identifiers else [idf.split(" ")[-1] for idf in identifiers if "ico" in idf.lower()]
     )
     institution_was_found, institution = _find_institution_in_temp(
         name, None if not ror else ror[0], None if not ico else ico[0]
