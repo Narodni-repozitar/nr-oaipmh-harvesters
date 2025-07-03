@@ -436,7 +436,7 @@ def transform_720_creator(md: Dict, entry: Dict, value: Tuple) -> None:
 
     ror = [] if not identifiers else [idf for idf in identifiers if "ror" in idf]
     ico = (
-        [] if not identifiers else [idf for idf in identifiers if "ico" in idf.lower()]
+        [] if not identifiers else [idf.split(" ")[-1] for idf in identifiers if "ico" in idf.lower()]
     )
     institution_was_found, institution = _find_institution_in_temp(
         name, None if not ror else ror[0], None if not ico else ico[0]
@@ -520,7 +520,7 @@ def transform_720_contributor(md: Dict, entry: Dict, value: Tuple) -> None:
 
     ror = [] if not identifiers else [idf for idf in identifiers if "ror" in idf]
     ico = (
-        [] if not identifiers else [idf for idf in identifiers if "ico" in idf.lower()]
+        [] if not identifiers else [idf.split(" ")[-1] for idf in identifiers if "ico" in idf.lower()]
     )
     institution_was_found, institution = _find_institution_in_temp(
         name, None if not ror else ror[0], None if not ico else ico[0]
@@ -705,11 +705,12 @@ def transform_996_accessibility(md, entry, value):
 
 @matches("999C1a", "999C1b", paired=True)
 def transform_999C1_funding_reference(md, entry, val):
-    project_id, _ = val
+    project_id, funder = val
     if project_id:
         from invenio_access.permissions import system_identity
         from invenio_vocabularies.proxies import current_service
 
+        matched_award = None
         try:
             resp = current_service.search(
                 system_identity,
@@ -718,30 +719,37 @@ def transform_999C1_funding_reference(md, entry, val):
             )
             matched_award = list(resp)[0]
         except Exception as e:
-            raise KeyError(f"Project ID: '{project_id}' has not been found") from e
+            if not funder:
+                raise KeyError(f"Project ID: '{project_id}' has not been found") from e
 
         award = {}
-        for field_in_award_datatype in [
-            "id",
-            "title",
-            "number",
-            "acronym",
-            "program",
-            "subjects",
-            "organizations",
-        ]:
-            if field_in_award_datatype in matched_award:
-                award[field_in_award_datatype] = matched_award[field_in_award_datatype]
+        if matched_award:
+            for field_in_award_datatype in [
+                "id",
+                "title",
+                "number",
+                "acronym",
+                "program",
+                "subjects",
+                "organizations",
+            ]:
+                if field_in_award_datatype in matched_award:
+                    award[field_in_award_datatype] = matched_award[
+                        field_in_award_datatype
+                    ]
 
-        md.setdefault("funders", []).append(
-            {
+        if not award:
+            new_funder = {"funder": {"name": funder}}
+        else:
+            new_funder = {
                 "award": award,
                 "funder": {
                     "id": matched_award["funder"]["id"],
                     "name": matched_award["funder"]["name"],
                 },
             }
-        )
+
+        md.setdefault("funders", []).append(new_funder)
 
 
 @matches("04107a", "04107b")
