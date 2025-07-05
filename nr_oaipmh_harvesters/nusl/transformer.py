@@ -887,11 +887,18 @@ def transform_856_attachments(md, entry, value):
     if language_version is not None:
         file_note += f" ({language_version})"
 
+    file_metadata = {"fileNote": file_note}
+    if filename.endswith(".pdf"):
+        file_metadata.update({
+            "fileType": "document"
+        })
+        
     entry.files.append(
         StreamEntryFile(
-            {"key": filename, "metadata": {"metadata": {"file_note": file_note}}}, link
+            {"key": filename, "metadata": {"metadata": file_metadata}}, link
         )
     )
+        
     entry.transformed["files"]["enabled"] = True
 
 
