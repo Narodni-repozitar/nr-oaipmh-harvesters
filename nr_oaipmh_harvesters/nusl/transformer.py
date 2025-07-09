@@ -1480,6 +1480,7 @@ def _find_institution_in_temp(
             or language_title_is_matched
         ):
             found, found_inst = True, inst
+            break
 
     if not found:
         return False, None
@@ -1488,7 +1489,7 @@ def _find_institution_in_temp(
         title = found_inst["title"]["cs"]
     else:
         title = list(found_inst["title"].values())[0]
-    return True, {"id": inst["id"], "name": title}
+    return True, {"id": found_inst["id"], "name": title}
 
 
 def _find_creatibutor(identifiers: List[str]) -> Tuple[bool, Optional[Dict]]:
