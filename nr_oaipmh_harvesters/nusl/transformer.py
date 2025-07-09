@@ -2,7 +2,7 @@ import itertools
 import logging
 import re
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple
 
 import Levenshtein
 import pycountry
@@ -436,7 +436,9 @@ def transform_720_creator(md: Dict, entry: Dict, value: Tuple) -> None:
 
     ror = [] if not identifiers else [idf for idf in identifiers if "ror" in idf]
     ico = (
-        [] if not identifiers else [idf.split(" ")[-1] for idf in identifiers if "ico" in idf.lower()]
+        []
+        if not identifiers
+        else [idf.split(" ")[-1] for idf in identifiers if "ico" in idf.lower()]
     )
     institution_was_found, institution = _find_institution_in_temp(
         name, None if not ror else ror[0], None if not ico else ico[0]
@@ -520,7 +522,9 @@ def transform_720_contributor(md: Dict, entry: Dict, value: Tuple) -> None:
 
     ror = [] if not identifiers else [idf for idf in identifiers if "ror" in idf]
     ico = (
-        [] if not identifiers else [idf.split(" ")[-1] for idf in identifiers if "ico" in idf.lower()]
+        []
+        if not identifiers
+        else [idf.split(" ")[-1] for idf in identifiers if "ico" in idf.lower()]
     )
     institution_was_found, institution = _find_institution_in_temp(
         name, None if not ror else ror[0], None if not ico else ico[0]
@@ -739,7 +743,7 @@ def transform_999C1_funding_reference(md, entry, val):
                     ]
 
         if not award:
-            new_funder = {"funder": {"name": funder}}
+            new_funder = {"award": {"number": project_id, "title": project_id}, "funder": {"name": funder}}
         else:
             new_funder = {
                 "award": award,
@@ -883,11 +887,18 @@ def transform_856_attachments(md, entry, value):
     if language_version is not None:
         file_note += f" ({language_version})"
 
+    file_metadata = {"fileNote": file_note}
+    if filename.endswith(".pdf"):
+        file_metadata.update({
+            "fileType": "document"
+        })
+        
     entry.files.append(
         StreamEntryFile(
-            {"key": filename, "metadata": {"metadata": {"file_note": file_note}}}, link
+            {"key": filename, "metadata": {"metadata": file_metadata}}, link
         )
     )
+        
     entry.transformed["files"]["enabled"] = True
 
 
@@ -1469,6 +1480,7 @@ def _find_institution_in_temp(
             or language_title_is_matched
         ):
             found, found_inst = True, inst
+            break
 
     if not found:
         return False, None
@@ -1477,7 +1489,7 @@ def _find_institution_in_temp(
         title = found_inst["title"]["cs"]
     else:
         title = list(found_inst["title"].values())[0]
-    return True, {"id": inst["id"], "name": title}
+    return True, {"id": found_inst["id"], "name": title}
 
 
 def _find_creatibutor(identifiers: List[str]) -> Tuple[bool, Optional[Dict]]:
