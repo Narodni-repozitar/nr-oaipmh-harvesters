@@ -3,6 +3,7 @@ import logging
 import re
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
+from urllib.parse import unquote
 
 import Levenshtein
 import pycountry
@@ -874,9 +875,12 @@ def transform_656_study_field(md, entry, value):
 @matches("8564_u", "8564_z", "8564_y", paired=True)
 def transform_856_attachments(md, entry, value):
     link, description, language_version = value
-    filename = link.split("/")[-1]
-    if filename is None:
+    raw_filename = link.split("/")[-1]
+    if raw_filename is None:
         raise ValueError("File link is not present")
+
+    filename = unquote(raw_filename)
+    filename = filename.replace(" ", "_")
 
     if ".gif" in filename:
         return
