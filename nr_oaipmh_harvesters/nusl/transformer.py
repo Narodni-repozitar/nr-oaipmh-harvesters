@@ -3,6 +3,7 @@ import logging
 import re
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
+from urllib.parse import unquote
 
 import Levenshtein
 import pycountry
@@ -743,7 +744,10 @@ def transform_999C1_funding_reference(md, entry, val):
                     ]
 
         if not award:
-            new_funder = {"award": {"number": project_id, "title": project_id}, "funder": {"name": funder}}
+            new_funder = {
+                "award": {"number": project_id, "title": project_id},
+                "funder": {"name": funder},
+            }
         else:
             new_funder = {
                 "award": award,
@@ -874,9 +878,12 @@ def transform_656_study_field(md, entry, value):
 @matches("8564_u", "8564_z", "8564_y", paired=True)
 def transform_856_attachments(md, entry, value):
     link, description, language_version = value
-    filename = link.split("/")[-1]
-    if filename is None:
+    raw_filename = link.split("/")[-1]
+    if raw_filename is None:
         raise ValueError("File link is not present")
+
+    filename = unquote(raw_filename)
+    filename = filename.replace(" ", "_")
 
     if ".gif" in filename:
         return
@@ -889,16 +896,14 @@ def transform_856_attachments(md, entry, value):
 
     file_metadata = {"fileNote": file_note}
     if filename.endswith(".pdf"):
-        file_metadata.update({
-            "fileType": "document"
-        })
-        
+        file_metadata.update({"fileType": "document"})
+
     entry.files.append(
         StreamEntryFile(
             {"key": filename, "metadata": {"metadata": file_metadata}}, link
         )
     )
-        
+
     entry.transformed["files"]["enabled"] = True
 
 
