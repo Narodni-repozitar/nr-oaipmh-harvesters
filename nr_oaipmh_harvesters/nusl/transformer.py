@@ -744,7 +744,10 @@ def transform_999C1_funding_reference(md, entry, val):
                     ]
 
         if not award:
-            new_funder = {"award": {"number": project_id, "title": project_id}, "funder": {"name": funder}}
+            new_funder = {
+                "award": {"number": project_id, "title": project_id},
+                "funder": {"name": funder},
+            }
         else:
             new_funder = {
                 "award": award,
@@ -893,16 +896,14 @@ def transform_856_attachments(md, entry, value):
 
     file_metadata = {"fileNote": file_note}
     if filename.endswith(".pdf"):
-        file_metadata.update({
-            "fileType": "document"
-        })
-        
+        file_metadata.update({"fileType": "document"})
+
     entry.files.append(
         StreamEntryFile(
             {"key": filename, "metadata": {"metadata": file_metadata}}, link
         )
     )
-        
+
     entry.transformed["files"]["enabled"] = True
 
 
