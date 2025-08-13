@@ -1454,57 +1454,62 @@ def _find_institution_in_temp(
     for inst in TEMP_INSTITUTIONS:
         if inst["id"] == "cs-ustav-pro-vyzkum-verejneho-mineni":
             print()
-        
+
         ico_is_matched = (
             ico
             and "props" in inst
             and "ICO" in inst["props"]
             and inst["props"]["ICO"] == ico
         )
-        
+
         ror_is_matched = (
             ror
             and "relatedURI" in inst
             and "ROR" in inst["relatedURI"]
             and inst["relatedURI"]["ROR"] == ror
         )
-        
+
         acronym_is_matched = (
             "props" in inst
             and "acronym" in inst["props"]
             and inst["props"]["acronym"] == name
         )
-        
+
         matched_language = None
-        
+
         nonpreferred_label_is_matched = False
         if "nonpreferredLabels" in inst:
             for nonpreferred_label in inst["nonpreferredLabels"]:
-                (lang, label), = nonpreferred_label.items()
-                if  label == name:
+                ((lang, label),) = nonpreferred_label.items()
+                if label == name:
                     nonpreferred_label_is_matched = True
                     matched_language = lang
                     break
-        
+
         language_title_is_matched = False
         for lang, title in inst["title"].items():
             if title == name:
                 language_title_is_matched = True
                 matched_language = lang
                 break
-        
-        if (ico_is_matched or ror_is_matched or acronym_is_matched or 
-            nonpreferred_label_is_matched or language_title_is_matched):
-            
+
+        if (
+            ico_is_matched
+            or ror_is_matched
+            or acronym_is_matched
+            or nonpreferred_label_is_matched
+            or language_title_is_matched
+        ):
+
             if matched_language and matched_language in inst["title"]:
                 title = inst["title"][matched_language]
             elif "cs" in inst["title"]:
                 title = inst["title"]["cs"]
             else:
                 title = list(inst["title"].values())[0]
-            
+
             return True, {"id": inst["id"], "name": title}
-    
+
     return False, None
 
 
