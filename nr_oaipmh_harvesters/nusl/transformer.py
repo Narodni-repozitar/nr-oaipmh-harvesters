@@ -599,7 +599,6 @@ def transform_7731_related_item(md, entry, value):
             **parsed,
         }
     )
-    print()
 
 
 def parse_issn(value, identifiers):
@@ -639,7 +638,16 @@ def transform_85640_original_record_url(md, entry, value):
 
 @matches("85642u")
 def transform_85642_external_location(md, entry, value):
-    md["externalLocation"] = {"externalLocationURL": value}
+    if "externalLocation" not in md:
+        md["externalLocation"] = {"externalLocationURL": value}
+    else:
+        md.setdefault("relatedItems", []).append({
+            "itemURL": value,
+            "itemTitle": md["title"],
+            "itemRelationType": vocabulary_cache.by_id("item-relation-types")[
+                "isVersionOf"
+            ]
+        })
 
 
 @matches("970__a")
@@ -1452,9 +1460,6 @@ def _find_institution_in_temp(
     Check whether the given name and ror are present in the temporary institutions vocabulary.
     """
     for inst in TEMP_INSTITUTIONS:
-        if inst["id"] == "cs-ustav-pro-vyzkum-verejneho-mineni":
-            print()
-
         ico_is_matched = (
             ico
             and "props" in inst
