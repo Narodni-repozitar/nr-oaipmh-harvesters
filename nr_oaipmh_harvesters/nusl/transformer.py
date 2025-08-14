@@ -641,13 +641,15 @@ def transform_85642_external_location(md, entry, value):
     if "externalLocation" not in md:
         md["externalLocation"] = {"externalLocationURL": value}
     else:
-        md.setdefault("relatedItems", []).append({
-            "itemURL": value,
-            "itemTitle": md["title"],
-            "itemRelationType": vocabulary_cache.by_id("item-relation-types")[
-                "isVersionOf"
-            ]
-        })
+        md.setdefault("relatedItems", []).append(
+            {
+                "itemURL": value,
+                "itemTitle": md["title"],
+                "itemRelationType": vocabulary_cache.by_id("item-relation-types")[
+                    "isVersionOf"
+                ],
+            }
+        )
 
 
 @matches("970__a")
