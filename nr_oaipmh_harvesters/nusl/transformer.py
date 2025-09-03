@@ -1554,6 +1554,7 @@ def _find_creatibutor(identifiers: List[str]) -> Tuple[bool, Optional[Dict]]:
 
 LANGUAGES_IN_INSTITUTIONS = [
     "cs",
+    "da",
     "en",
     "hu",
     "de",
