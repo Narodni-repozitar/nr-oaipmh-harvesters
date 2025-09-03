@@ -3190,4 +3190,19 @@ TEMP_INSTITUTIONS = [
         ],
         "title": {"en": "University of Graz"},
     },
+    {
+        "id": "dtu",
+        "props": {"acronym": "DTU"},
+        "relatedURI": {
+            "ROR": "https://ror.org/04qtj9h94",
+            "URL": "https://dtu.dk",
+        },
+        "nonpreferredLabels": [
+            {"de": "Dänemarks Technische Universität"},
+        ],
+        "title": {
+            "da": "Danmarks Tekniske Universitet",
+            "en": "Technical University of Denmark",
+        },
+    },
 ]
