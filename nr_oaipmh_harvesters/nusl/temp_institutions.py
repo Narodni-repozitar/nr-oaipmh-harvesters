@@ -3205,13 +3205,5 @@ TEMP_INSTITUTIONS = [
             "da": "Danmarks Tekniske Universitet",
             "en": "Technical University of Denmark",
         },
-    },
-    {
-        "id": "GA-JU",
-        "props": {"acronym": "GA JU"},
-        "title": {
-            "cs": "Grantová agentura Jihočeské univerzity",
-            "en": "Grant Agency of University of South Bohemia",
-        },
-    },
+    }
 ]
