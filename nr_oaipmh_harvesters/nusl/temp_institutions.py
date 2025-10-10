@@ -3205,5 +3205,19 @@ TEMP_INSTITUTIONS = [
             "da": "Danmarks Tekniske Universitet",
             "en": "Technical University of Denmark",
         },
+    },
+    {
+        "id": "syft",
+        "relatedURI": {"URL": "https://syft.com/"},
+        "title": {
+            "en": "Syft Technologies",
+        },
+    },
+    {
+        "id": "vinci",
+        "relatedURI": {"URL": "https://www.davinci-ls.com/en-us/home"},
+        "title": {
+            "en": "Da Vinci Laboratory Solutions UK & Ireland",
+        },
     }
 ]
