@@ -1737,11 +1737,12 @@ TEMP_INSTITUTIONS = [
     },
     {
         "id": "idu",
-        "props": {"ICO": "00023205", "acronym": "IDU", "nameType": "organizational"},
-        "relatedURI": {"ROR": "https://ror.org/024jn1h80", "URL": "http://www.idu.cz/"},
+        "nonpreferredLabels": [{"cs": "Institut umění - Divadelní ústav"}],
+        "props": {"ICO": "00023205", "acronym": "NIPK", "nameType": "organizational"},
+        "relatedURI": {"ROR": "https://ror.org/024jn1h80", "URL": "https://nipk.cz/"},
         "title": {
-            "cs": "Institut umění - Divadelní ústav",
-            "en": "Arts and Theatre Institute",
+            "cs": "Národní institut pro kulturu",
+            "en": "Czech Cultural Institute",
         },
     },
     {
