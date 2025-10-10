@@ -3219,5 +3219,5 @@ TEMP_INSTITUTIONS = [
         "title": {
             "en": "Da Vinci Laboratory Solutions UK & Ireland",
         },
-    }
+    },
 ]
