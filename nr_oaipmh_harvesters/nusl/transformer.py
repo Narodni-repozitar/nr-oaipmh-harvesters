@@ -992,7 +992,7 @@ def transform_998_collection(md, entry, value):
         "nacr": "w8y4",
         "nadace_promeny": "gj2a",
         "narodni_hrebcin_kladruby": "rtgy",
-        "narodni_informacni_a_poradenske_stredisko_pro_kulturu": "ge7e",
+        "narodni_informacni_a_poradenske_stredisko_pro_kulturu": "j9x8",
         "narodni_knihovna": "vz34",
         "narodni_lekarska_knihovna": "a0hr",
         "narodni_muzeum": "19pv",
