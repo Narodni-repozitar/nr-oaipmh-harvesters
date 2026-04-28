@@ -754,9 +754,21 @@ def transform_999C1_funding_reference(md, entry, val):
                     ]
 
         if not award:
+            funder_data = {"name": funder}
+            if funder:
+                try:
+                    matched_funder = current_service.read(
+                        system_identity, ("funders", funder)
+                    ).to_dict()
+                    funder_data = {
+                        "id": matched_funder["id"],
+                        "name": matched_funder["name"],
+                    }
+                except Exception:
+                    pass
             new_funder = {
                 "award": {"number": project_id, "title": project_id},
-                "funder": {"name": funder},
+                "funder": funder_data,
             }
         else:
             new_funder = {
