@@ -447,7 +447,7 @@ def parse_place(place):
     return res
 
 
-@matches_grouped("720__a", "720__5", "720__6", group=["720__5", "720__6"])
+@matches_grouped("720__a", "720__5", "720__6", unique=True, group=["720__5", "720__6"])
 def transform_720_creator(md: Dict, entry: Dict, value: Tuple) -> None:
     if not value[0] or value[0] == "et. al.":
         return
@@ -520,7 +520,7 @@ def transform_720_creator(md: Dict, entry: Dict, value: Tuple) -> None:
 
 
 @matches_grouped(
-    "720__i", "720__e", "720__5", "720__6", group=["720__5", "720__6"]
+    "720__i", "720__e", "720__5", "720__6", unique=True, group=["720__5", "720__6"]
 )
 def transform_720_contributor(md: Dict, entry: Dict, value: Tuple) -> None:
     if not value[0]:
