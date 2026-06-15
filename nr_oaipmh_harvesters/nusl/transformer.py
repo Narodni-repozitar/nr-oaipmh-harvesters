@@ -49,30 +49,36 @@ class NUSLTransformer(OAIRuleTransformer):
         else:
             self._allowed_slugs = None
     
-    def transform(self, entry: StreamEntry):
-        # Allowlist filter — when configured, drop records whose NUSL
-        # collection ID doesn't map to an allowed community slug. Run
-        # this BEFORE all the transform_* helpers so filtered entries
-        # don't waste cycles getting their metadata built up.
+    def transform(self, entry):
+        # Allowlist filter — when configured, drop records UNLESS at least
+        # one of the record's 998__a mapped slugs is in the allowlist.
+        # Records can have multiple 998__a (multiple community assignments);
+        # if A is allowed and the record is [B, A, C, D], we keep it.
+        # transform_998_collection decides which of B/A/C/D actually
+        # get attached to the record based on what exists in the repo.
         if self._allowed_slugs is not None:
             collection_ids = None
             if hasattr(entry, "entry") and isinstance(entry.entry, dict):
                 collection_ids = entry.entry.get("998__a")
             if isinstance(collection_ids, str):
                 collection_ids = [collection_ids]
-            if collection_ids:
-                target_slug = NUSL_ID_TO_SLUG_MAPPING.get(collection_ids[0])
-                if target_slug not in self._allowed_slugs:
-                    entry.filtered = True
-                    entry.context.setdefault("filter_reasons", []).append(
-                        f"998__a={collection_ids[0]!r} -> slug={target_slug!r} "
-                        f"not in allowlist {sorted(self._allowed_slugs)}"
-                    )
-                    return True
-            else:
+            if not collection_ids:
                 entry.filtered = True
                 entry.context.setdefault("filter_reasons", []).append(
                     "no 998__a collection id — cannot determine community"
+                )
+                return True
+ 
+            record_slugs = {
+                NUSL_ID_TO_SLUG_MAPPING.get(cid) for cid in collection_ids
+            }
+            record_slugs.discard(None)
+            allowed_in_record = record_slugs & self._allowed_slugs
+            if not allowed_in_record:
+                entry.filtered = True
+                entry.context.setdefault("filter_reasons", []).append(
+                    f"998__a={collection_ids!r} -> slugs={sorted(record_slugs)!r} "
+                    f"none in allowlist {sorted(self._allowed_slugs)!r}"
                 )
                 return True
         
@@ -967,22 +973,33 @@ def transform_856_attachments(md, entry, value):
 
 @matches("998__a")
 def transform_998_collection(md, entry, value):
-    from invenio_access.permissions import system_identity
-    from invenio_communities.proxies import current_communities
-
-    if value not in NUSL_ID_TO_SLUG_MAPPING:
-        raise ValueError(f"{value} is not a valid slug for any community.")
-
-    slug_filter = dsl.Q("term", **{"slug": NUSL_ID_TO_SLUG_MAPPING[value]})
-    results = current_communities.service.search(
-        system_identity, extra_filter=slug_filter
-    )
-    if not results:
-        raise ValueError(f"{value} is not a valid slug for any community.")
-    community = list(results)[0]
-    entry.transformed.setdefault("parent", {}).setdefault("communities", {})[
-        "default"
-    ] = community["id"]
+    """
+    Map one 998__a collection id to a community assignment on the record.
+    """
+    slug = NUSL_ID_TO_SLUG_MAPPING.get(value)
+    if not slug:
+        return  # unmapped collection id — silently skip
+ 
+    existing = _get_existing_communities()
+    community_id = existing.get(slug)
+    if not community_id:
+        return  # community not (yet) in repo — silently skip this assignment
+ 
+    parent = entry.transformed.setdefault("parent", {})
+    communities = parent.setdefault("communities", {})
+ 
+    # First valid community becomes the 'default'. The RDM record service
+    # uses 'default' as the primary community for permission checks and
+    # for the breadcrumb on the record page.
+    if "default" not in communities:
+        communities["default"] = community_id
+ 
+    # Track all community memberships in 'ids'. RDM stores both the
+    # default and the full set; record search filters can match against
+    # either field.
+    ids = communities.setdefault("ids", [])
+    if community_id not in ids:
+        ids.append(community_id)
 
 
 @matches("502__a")
@@ -1634,3 +1651,33 @@ NUSL_ID_TO_SLUG_MAPPING = {
     "zapadoceska_univerzita": "6f0m",
     "zapadoceske_muzeum_v_plzni": "efbe",
 }
+
+_existing_communities_cache = None
+
+def _get_existing_communities():
+    """
+    Return {slug: community_id} for every community currently in the
+    repository. Lazy-loaded and cached for the lifetime of the worker
+    process. Without caching, each record with N communities triggers
+    N OpenSearch queries; with thousands of records that's many thousands
+    of queries instead of one.
+    """
+    global _existing_communities_cache
+    if _existing_communities_cache is None:
+        from invenio_access.permissions import system_identity
+        from invenio_communities.proxies import current_communities
+ 
+        cache = {}
+        # Page through all communities. RDM has no built-in scan; we use a
+        # large size and ignore pagination (typical deployments are well
+        # under 1000 communities; nr-docs targets 156).
+        results = current_communities.service.search(
+            system_identity, params={"size": 1000}
+        )
+        for hit in results:
+            slug = hit.get("slug")
+            cid = hit.get("id")
+            if slug and cid:
+                cache[slug] = cid
+        _existing_communities_cache = cache
+    return _existing_communities_cache
