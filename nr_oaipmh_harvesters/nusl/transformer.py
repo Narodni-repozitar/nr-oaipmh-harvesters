@@ -1576,7 +1576,7 @@ NUSL_ID_TO_SLUG_MAPPING = {
     "nacr": "w8y4",
     "nadace_promeny": "gj2a",
     "narodni_hrebcin_kladruby": "rtgy",
-    "narodni_informacni_a_poradenske_stredisko_pro_kulturu": "j9x8",
+    "narodni_informacni_a_poradenske_stredisko_pro_kulturu": "k38g",
     "narodni_knihovna": "vz34",
     "narodni_lekarska_knihovna": "a0hr",
     "narodni_muzeum": "19pv",
