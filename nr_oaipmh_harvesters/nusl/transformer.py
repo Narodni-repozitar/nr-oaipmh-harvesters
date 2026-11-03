@@ -1,6 +1,7 @@
 import itertools
 import logging
 import re
+import time
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 from urllib.parse import unquote
@@ -56,6 +57,7 @@ class NUSLTransformer(OAIRuleTransformer):
         # if A is allowed and the record is [B, A, C, D], we keep it.
         # transform_998_collection decides which of B/A/C/D actually
         # get attached to the record based on what exists in the repo.
+        allowed_in_record = None
         if self._allowed_slugs is not None:
             collection_ids = None
             if hasattr(entry, "entry") and isinstance(entry.entry, dict):
@@ -133,6 +135,17 @@ class NUSLTransformer(OAIRuleTransformer):
         transform_656_study_field(md, entry)
 
         transform_998_collection(md, entry)
+
+        # An allowlisted record without a default community would fail later
+        # in the writer with an unclear error; report it here instead.
+        if allowed_in_record and not (
+            entry.transformed.get("parent", {}).get("communities", {}).get("default")
+        ):
+            raise ValueError(
+                f"Community {', '.join(sorted(allowed_in_record))} not found in "
+                f"repository, record has no parent.communities.default "
+                f"(998__a={entry.entry.get('998__a')!r})"
+            )
 
         transform_856_attachments(md, entry)
 
@@ -980,10 +993,15 @@ def transform_998_collection(md, entry, value):
     if not slug:
         return  # unmapped collection id — silently skip
  
-    existing = _get_existing_communities()
-    community_id = existing.get(slug)
+    community_id = _get_community_id(slug)
     if not community_id:
-        return  # community not (yet) in repo — silently skip this assignment
+        log.warning(
+            "Community %r (998__a=%r) not found in repository, "
+            "skipping community assignment",
+            slug,
+            value,
+        )
+        return
  
     parent = entry.transformed.setdefault("parent", {})
     communities = parent.setdefault("communities", {})
@@ -1653,17 +1671,35 @@ NUSL_ID_TO_SLUG_MAPPING = {
 }
 
 _existing_communities_cache = None
+_existing_communities_loaded_at = 0.0
+# Minimum seconds between reloads triggered by a slug missing from the cache.
+COMMUNITIES_CACHE_RELOAD_INTERVAL = 30
 
-def _get_existing_communities():
+
+def _get_community_id(slug):
+    """
+    Return the community id for slug, or None. On a miss, reload the cache
+    (at most once per COMMUNITIES_CACHE_RELOAD_INTERVAL) and look again.
+    """
+    community_id = _get_existing_communities().get(slug)
+    if community_id is None and (
+        time.monotonic() - _existing_communities_loaded_at
+        >= COMMUNITIES_CACHE_RELOAD_INTERVAL
+    ):
+        community_id = _get_existing_communities(reload=True).get(slug)
+    return community_id
+
+
+def _get_existing_communities(reload=False):
     """
     Return {slug: community_id} for every community currently in the
-    repository. Lazy-loaded and cached for the lifetime of the worker
-    process. Without caching, each record with N communities triggers
-    N OpenSearch queries; with thousands of records that's many thousands
-    of queries instead of one.
+    repository. Lazy-loaded and cached in the worker process, reloaded
+    only on request (see _get_community_id). Without caching, each record
+    with N communities triggers N OpenSearch queries; with thousands of
+    records that's many thousands of queries instead of one.
     """
-    global _existing_communities_cache
-    if _existing_communities_cache is None:
+    global _existing_communities_cache, _existing_communities_loaded_at
+    if _existing_communities_cache is None or reload:
         from invenio_access.permissions import system_identity
         from invenio_communities.proxies import current_communities
  
@@ -1680,4 +1716,5 @@ def _get_existing_communities():
             if slug and cid:
                 cache[slug] = cid
         _existing_communities_cache = cache
+        _existing_communities_loaded_at = time.monotonic()
     return _existing_communities_cache
