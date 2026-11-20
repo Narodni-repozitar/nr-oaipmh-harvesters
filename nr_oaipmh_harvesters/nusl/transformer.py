@@ -1670,51 +1670,37 @@ NUSL_ID_TO_SLUG_MAPPING = {
     "zapadoceske_muzeum_v_plzni": "efbe",
 }
 
-_existing_communities_cache = None
-_existing_communities_loaded_at = 0.0
-# Minimum seconds between reloads triggered by a slug missing from the cache.
-COMMUNITIES_CACHE_RELOAD_INTERVAL = 30
+# Per-process memo of community lookups: {slug: community_id} for found
+# communities, {slug: time.monotonic() of the failed read} for missing ones.
+_community_ids = {}
+_missing_communities = {}
+# Seconds before a slug that was not found is looked up again.
+COMMUNITY_MISS_RETRY_INTERVAL = 30
 
 
 def _get_community_id(slug):
     """
-    Return the community id for slug, or None. On a miss, reload the cache
-    (at most once per COMMUNITIES_CACHE_RELOAD_INTERVAL) and look again.
+    Return the id of the community with this slug, or None when it does not
+    exist or is deleted. Read from the database once per slug and process.
     """
-    community_id = _get_existing_communities().get(slug)
-    if community_id is None and (
-        time.monotonic() - _existing_communities_loaded_at
-        >= COMMUNITIES_CACHE_RELOAD_INTERVAL
+    if slug in _community_ids:
+        return _community_ids[slug]
+    missed_at = _missing_communities.get(slug)
+    if missed_at is not None and (
+        time.monotonic() - missed_at < COMMUNITY_MISS_RETRY_INTERVAL
     ):
-        community_id = _get_existing_communities(reload=True).get(slug)
-    return community_id
+        return None
 
+    from invenio_access.permissions import system_identity
+    from invenio_communities.errors import CommunityDeletedError
+    from invenio_communities.proxies import current_communities
+    from invenio_pidstore.errors import PIDDeletedError, PIDDoesNotExistError
 
-def _get_existing_communities(reload=False):
-    """
-    Return {slug: community_id} for every community currently in the
-    repository. Lazy-loaded and cached in the worker process, reloaded
-    only on request (see _get_community_id). Without caching, each record
-    with N communities triggers N OpenSearch queries; with thousands of
-    records that's many thousands of queries instead of one.
-    """
-    global _existing_communities_cache, _existing_communities_loaded_at
-    if _existing_communities_cache is None or reload:
-        from invenio_access.permissions import system_identity
-        from invenio_communities.proxies import current_communities
- 
-        cache = {}
-        # Page through all communities. RDM has no built-in scan; we use a
-        # large size and ignore pagination (typical deployments are well
-        # under 1000 communities; nr-docs targets 156).
-        results = current_communities.service.search(
-            system_identity, params={"size": 1000}
-        )
-        for hit in results:
-            slug = hit.get("slug")
-            cid = hit.get("id")
-            if slug and cid:
-                cache[slug] = cid
-        _existing_communities_cache = cache
-        _existing_communities_loaded_at = time.monotonic()
-    return _existing_communities_cache
+    try:
+        community = current_communities.service.read(system_identity, slug)
+    except (PIDDoesNotExistError, PIDDeletedError, CommunityDeletedError):
+        _missing_communities[slug] = time.monotonic()
+        return None
+    _missing_communities.pop(slug, None)
+    _community_ids[slug] = community.id
+    return community.id
